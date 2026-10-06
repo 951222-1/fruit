@@ -1,8 +1,8 @@
 import { FilesetResolver, HandLandmarker, PoseLandmarker } from '@mediapipe/tasks-vision';
 
-const POSE_MODEL_URL = '/models/pose_landmarker_lite.task';
-const HAND_MODEL_URL = '/models/hand_landmarker.task';
-const WASM_URL = '/wasm'; // 100% 本地載入，免依賴外部 CDN
+const POSE_MODEL_URL = 'models/pose_landmarker_lite.task'; // 相對路徑:相容 GitHub Pages 子目錄
+const HAND_MODEL_URL = 'models/hand_landmarker.task';
+const WASM_URL = 'wasm'; // 100% 本地載入，免依賴外部 CDN
 
 export class VisionEngine {
   constructor() {
