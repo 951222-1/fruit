@@ -1,0 +1,17 @@
+{
+  "name": "slingshot-fruit-game",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host localhost --port 5175",
+    "build": "vite build",
+    "preview": "vite preview --host localhost --port 5175"
+  },
+  "dependencies": {
+    "@mediapipe/tasks-vision": "latest"
+  },
+  "devDependencies": {
+    "vite": "latest"
+  }
+}

@@ -1,0 +1,7 @@
+# dependencies & build cache
+node_modules/
+node_modules/.vite/
+
+# OS junk
+Thumbs.db
+.DS_Store
