@@ -11,7 +11,7 @@ app.innerHTML = `
     <header class="hero">
       <div class="title-wrap">
         <h1>體感彈弓射水果 🏹</h1>
-        <p>1 分鐘限時挑戰！雙手併攏舉高過肩，往下拉弓後續力 3 秒自動發射！</p>
+        <p>1 分鐘限時挑戰！畫面會指定目標水果，雙手併攏舉高過肩、下拉弓、續力 3 秒自動發射！</p>
       </div>
       <div class="hero-actions">
         <button class="secondary" id="soundToggle">🔊 音效</button>
@@ -51,6 +51,10 @@ app.innerHTML = `
     </section>
 
     <section class="footer-tips">
+      <div class="tip-card">
+        <h3>0. 只打指定的水果 🎯</h3>
+        <p>畫面頂端會告訴你「打這顆！」，目標水果有金色圈圈。打錯水果不會掉、也不扣分。</p>
+      </div>
       <div class="tip-card">
         <h3>1. 雙手併攏舉高過肩 ✋</h3>
         <p>雙手靠近併攏，舉到肩膀以上的高度，彈弓皮兜會自動吸附。</p>

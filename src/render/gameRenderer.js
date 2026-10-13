@@ -96,15 +96,34 @@ export class GameRenderer {
   }
 
   // 繪製水果（極簡版：大顆 emoji，無外框無底圖，適合長輩辨識）
-  drawFruit(fruit, isTargeted = false) {
+  // isAssigned: 被指定為「只能打這顆」的目標 → 金色虛線圈 + 輕微脈動
+  drawFruit(fruit, isTargeted = false, isAssigned = false, shakeOffsetX = 0) {
     const ctx = this.ctx;
     ctx.save();
-    ctx.translate(fruit.x, fruit.y);
+    ctx.translate(fruit.x + shakeOffsetX, fruit.y);
     ctx.rotate(fruit.rotation || 0);
 
     const scale = fruit.scale || 1;
     ctx.scale(scale, scale);
     const r = fruit.radius;
+
+    // 指定目標：金色虛線圈旋轉 + 輕微整體脈動（長輩遠遠就看得出「打這顆」）
+    if (isAssigned) {
+      const t = performance.now();
+      const pulse = 1 + Math.sin(t * 0.006) * 0.05;
+      ctx.save();
+      ctx.scale(pulse, pulse);
+      ctx.beginPath();
+      ctx.arc(0, 0, r + 16, 0, Math.PI * 2);
+      ctx.setLineDash([9, 7]);
+      ctx.lineDashOffset = -t * 0.03;
+      ctx.lineWidth = 4;
+      ctx.strokeStyle = '#fbbf24';
+      ctx.shadowColor = 'rgba(251, 191, 36, 0.55)';
+      ctx.shadowBlur = 10;
+      ctx.stroke();
+      ctx.restore();
+    }
 
     // 被瞄準時輕微放大脈動提示（取代原本的光環）
     if (isTargeted) {
@@ -127,6 +146,42 @@ export class GameRenderer {
     ctx.textBaseline = 'middle';
     ctx.fillText(fruit.icon, 0, r * 0.08);
 
+    ctx.restore();
+  }
+
+  // 指定目標橫幅：畫面頂端中央大字提示「打這顆！」（長輩友善：字大、對比高）
+  drawTargetBanner(fruit) {
+    if (!fruit) return;
+    const ctx = this.ctx;
+    const dpr = window.devicePixelRatio || 1;
+    const canvasW = this.canvas.width / dpr;
+    const t = performance.now();
+
+    const text = `打這顆！ ${fruit.icon} ${fruit.name} +${fruit.score}分`;
+    ctx.save();
+    ctx.font = 'bold 26px system-ui, sans-serif';
+    const textW = ctx.measureText(text).width;
+    const padX = 22;
+    const bw = textW + padX * 2 + 44; // 多留 44 給 🎯 圖示
+    const bh = 48;
+    const bx = (canvasW - bw) / 2;
+    const by = 12 + Math.sin(t * 0.004) * 3; // 輕微上下浮動
+
+    // 底板：深色半圓角 + 金色粗框（在綠色樹梢上依然清楚）
+    ctx.beginPath();
+    ctx.roundRect ? ctx.roundRect(bx, by, bw, bh, 24) : ctx.rect(bx, by, bw, bh);
+    ctx.fillStyle = 'rgba(23, 23, 23, 0.82)';
+    ctx.fill();
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = '#fbbf24';
+    ctx.stroke();
+
+    // 文字
+    ctx.font = 'bold 26px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#fde68a';
+    ctx.fillText(`🎯 ${text}`, canvasW / 2, by + bh / 2 + 1);
     ctx.restore();
   }
 

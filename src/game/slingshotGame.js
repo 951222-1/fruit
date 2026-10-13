@@ -42,6 +42,29 @@ export class SlingshotGame {
     this.projectiles = [];
     this.popups = [];
     this.targetedFruitId = null;
+
+    // 指定目標玩法：只能打這顆水果
+    this.assignedTargetId = null;
+  }
+
+  // ===== 指定目標玩法 =====
+  // 確認當前指定目標有效（還掛在樹上），無效就指定新的
+  ensureTarget() {
+    const cur = this.fruits.find((f) => f.id === this.assignedTargetId);
+    if (cur && cur.state === 'HANGING') return;
+    this.assignNewTarget();
+  }
+
+  // 從還掛著的水果中隨機指定一顆當目標
+  assignNewTarget() {
+    const pool = this.fruits.filter((f) => f.state === 'HANGING');
+    if (pool.length === 0) {
+      this.assignedTargetId = null;
+      return;
+    }
+    const pick = pool[Math.floor(Math.random() * pool.length)];
+    this.assignedTargetId = pick.id;
+    sound.playTargetCall();
   }
 
   init(width, height) {
@@ -98,6 +121,7 @@ export class SlingshotGame {
     this.resetCharge();
     this.slingshotState = 'IDLE';
     this.lastUpdateTime = performance.now();
+    this.ensureTarget(); // 指定目標玩法：開局先指定一顆
     sound.playClick();
   }
 
@@ -114,6 +138,8 @@ export class SlingshotGame {
     this.slingshotState = 'IDLE';
     this.lastUpdateTime = performance.now();
     this.initFruits(width, height);
+    this.assignedTargetId = null; // 指定目標玩法：重開局重新指定
+    this.ensureTarget();
     sound.playClick();
   }
 
@@ -246,6 +272,8 @@ export class SlingshotGame {
     // 處理計時邏輯 (僅在 PLAYING 階段)
     if (this.phase === 'PLAYING') {
       this.handleCountdown();
+      // 指定目標玩法：確認目標還掛著，被打掉就自動換下一顆
+      this.ensureTarget();
     }
 
     // 處理手勢互動
@@ -256,6 +284,12 @@ export class SlingshotGame {
 
     // 更新並繪製水果
     this.updateAndDrawFruits(renderer, width, height);
+
+    // 指定目標玩法：頂端橫幅「打這顆！」（僅正式遊戲顯示）
+    if (this.phase === 'PLAYING' && this.assignedTargetId != null) {
+      const assigned = this.fruits.find((f) => f.id === this.assignedTargetId);
+      renderer.drawTargetBanner(assigned);
+    }
 
     // 更新並繪製飛行彈丸
     this.updateAndDrawProjectiles(renderer, width, height);
@@ -547,9 +581,20 @@ export class SlingshotGame {
 
     for (const fruit of this.fruits) {
       const isTargeted = this.slingshotState === 'PULLING' && this.targetedFruitId === fruit.id;
+      const isAssigned = this.phase === 'PLAYING' && this.assignedTargetId === fruit.id;
+
+      // 打錯水果的抖動（限時，往復偏移，只影響繪圖不影響碰撞位置）
+      if (fruit.shakeUntil && fruit.state === 'HANGING') {
+        if (now < fruit.shakeUntil) {
+          fruit.shakeOffsetX = Math.sin(now * 0.05) * 6;
+        } else {
+          fruit.shakeUntil = 0;
+          fruit.shakeOffsetX = 0;
+        }
+      }
 
       if (fruit.state === 'HANGING') {
-        renderer.drawFruit(fruit, isTargeted);
+        renderer.drawFruit(fruit, isTargeted, isAssigned, fruit.shakeOffsetX || 0);
       } else if (fruit.state === 'FALLING') {
         fruit.y += fruit.vy;
         fruit.x += fruit.vx;
@@ -579,6 +624,7 @@ export class SlingshotGame {
   }
 
   updateAndDrawProjectiles(renderer, width, height) {
+    const now = performance.now();
     for (let i = this.projectiles.length - 1; i >= 0; i--) {
       const proj = this.projectiles[i];
       proj.x += proj.vx;
@@ -598,6 +644,23 @@ export class SlingshotGame {
 
         const dist = Math.hypot(proj.x - fruit.x, proj.y - fruit.y);
         if (dist <= fruit.radius + proj.radius + 14) {
+          // 指定目標玩法：只有被指定的水果能被打下來
+          if (fruit.id !== this.assignedTargetId) {
+            // 打錯水果：彈丸被擋下、水果晃一下、「不是這顆 ❌」，不扣分不掉落
+            fruit.shakeUntil = now + 600;
+            sound.playWrongHit();
+            this.popups.push({
+              x: fruit.x,
+              y: fruit.y - 18,
+              vy: -1.4,
+              alpha: 1.2,
+              text: '不是這顆 ❌',
+              color: '#fca5a5',
+            });
+            hit = true;
+            break;
+          }
+
           hit = true;
           fruit.state = 'FALLING';
           fruit.vy = 1.2;
@@ -618,6 +681,10 @@ export class SlingshotGame {
             text: `+${fruit.score} ${fruit.icon}`,
             color: fruit.particleColor,
           });
+
+          // 打中目標 → 立刻指定下一顆（不等重生）
+          this.assignedTargetId = null;
+          this.ensureTarget();
           break;
         }
       }
