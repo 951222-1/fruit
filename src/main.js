@@ -5,13 +5,14 @@ import { GameRenderer } from './render/gameRenderer.js';
 import { SlingshotGame } from './game/slingshotGame.js';
 import './style.css';
 
+const ART_BASE_URL = `${import.meta.env.BASE_URL}art/`;
 const app = document.querySelector('#app');
 app.innerHTML = `
   <main class="shell">
     <header class="hero">
       <div class="title-wrap">
         <h1>體感彈弓射水果 🏹</h1>
-        <p>1 分鐘限時挑戰！畫面會指定目標水果，雙手併攏舉高過肩、下拉弓、續力 3 秒自動發射！</p>
+        <p>1 分鐘限時挑戰！雙手併攏舉高過肩、往下拉弓，續力 3 秒自動發射。</p>
       </div>
       <div class="hero-actions">
         <button class="secondary" id="soundToggle">🔊 音效</button>
@@ -20,22 +21,70 @@ app.innerHTML = `
     </header>
 
     <section class="stage-card">
-      <div class="stage" id="stage">
-        <video id="webcam" autoplay playsinline muted></video>
-        <canvas id="overlay"></canvas>
+      <div class="play-area" id="playArea">
+        <div class="stage" id="stage">
+          <video id="webcam" autoplay playsinline muted></video>
+          <canvas id="overlay"></canvas>
 
-        <!-- 畫面內部浮動按鈕 -->
-        <div class="overlay-controls">
-          <button class="glass-btn" id="skipTutorialBtn" style="display: none;">跳過教學 ⏩</button>
-          <button class="glass-btn" id="helpBtn">？動作教學</button>
+          <!-- 畫面內部浮動按鈕 -->
+          <div class="overlay-controls">
+            <button class="glass-btn" id="skipTutorialBtn" style="display: none;">跳過教學 ⏩</button>
+            <button class="glass-btn" id="helpBtn">？動作教學</button>
+          </div>
+
+          <div class="empty-state" id="emptyState">
+            <div class="camera-icon">🏹</div>
+            <h2>選擇遊戲模式</h2>
+            <p>先選一種玩法，再啟動 Webcam 開始遊戲。</p>
+            <div class="mode-picker" role="group" aria-label="選擇遊戲模式">
+              <button class="mode-card selected" type="button" data-mode="CLASSIC" aria-pressed="true">
+                <strong>🎯 經典彈弓</strong>
+                <span>想射哪種就射哪種；每顆水果命中固定 +15 分。</span>
+              </button>
+              <button class="mode-card" type="button" data-mode="HARVEST" aria-pressed="false">
+                <strong>🍎 水果採收</strong>
+                <span>每局指定一種當季水果；其他種類也能打落並得 5 分。</span>
+              </button>
+              <button class="mode-card" type="button" data-mode="HARVEST_HARD" aria-pressed="false">
+                <strong>🐝 水果採集困難版</strong>
+                <span>當季水果照舊；樹上增加 1–2 個蜂巢，射中扣5分。</span>
+              </button>
+            </div>
+            <button class="primary" id="emptyStartBtn" style="margin-top: 16px; padding: 12px 24px; font-size: 16px;">啟動 Webcam 🎥</button>
+          </div>
+
+          <div class="harvest-rules" id="harvestRules" hidden>
+            <div class="harvest-rules-card">
+              <p class="rules-eyebrow">本回合採收</p>
+              <img class="rules-fruit-image" id="rulesFruitIcon" alt="" />
+              <h2 id="rulesFruitName">紅蘋果</h2>
+              <p class="rules-main">當季水果照原分數採收！</p>
+              <p class="rules-wrong">其他水果也能打落：<strong>不是當季水果！+5分</strong></p>
+              <p class="rules-hive" id="hardHarvestRule" hidden>困難版：樹上有 1–2 個蜂巢，整回合留在原位；每次射中扣5分，最低0分。</p>
+              <p class="rules-gesture">雙手併攏抬高過肩，像拉彈弓一樣往下拉；續力 3 秒射出第一發。</p>
+              <p class="rules-start-hint">確認後，第一發射出才開始 60 秒挑戰。</p>
+              <button class="primary" id="confirmHarvestRulesBtn" type="button">我知道了，準備開始</button>
+            </div>
+          </div>
+
+          <div class="start-countdown" id="startCountdown" hidden aria-live="assertive">
+            <div class="countdown-card">
+              <span class="countdown-caption">準備拉弓</span>
+              <strong class="countdown-value" id="countdownValue">3</strong>
+              <span class="countdown-hint">GO 後，續力射出第一發開始計時</span>
+            </div>
+          </div>
         </div>
 
-        <div class="empty-state" id="emptyState">
-          <div class="camera-icon">🏹</div>
-          <h2>準備開始 1 分鐘彈弓射水果</h2>
-          <p>請點擊下方「啟動 Webcam」允許攝影機權限，讓上半身與雙手進入畫面，即可開始動作校準與挑戰！</p>
-          <button class="primary" id="emptyStartBtn" style="margin-top: 16px; padding: 12px 24px; font-size: 16px;">立即啟動 Webcam 🎥</button>
-        </div>
+        <aside class="harvest-sign" id="harvestSign" hidden aria-live="polite">
+          <div class="sign-rope"></div>
+          <div class="sign-board">
+            <span class="sign-label">本回合採收</span>
+            <img class="sign-fruit" id="signFruitIcon" alt="" />
+            <strong class="sign-name" id="signFruitName">紅蘋果</strong>
+          </div>
+          <div class="sign-post"></div>
+        </aside>
       </div>
 
       <div class="controls">
@@ -51,9 +100,9 @@ app.innerHTML = `
     </section>
 
     <section class="footer-tips">
-      <div class="tip-card">
-        <h3>0. 只打指定的水果 🎯</h3>
-        <p>畫面頂端會告訴你「打這顆！」，目標水果有金色圈圈。打錯水果不會掉、也不扣分。</p>
+      <div class="tip-card mode-specific-tip">
+        <h3 id="modeTipTitle">🎯 經典彈弓</h3>
+        <p id="modeTipText">想射哪種水果都可以；每顆命中固定 +15 分。</p>
       </div>
       <div class="tip-card">
         <h3>1. 雙手併攏舉高過肩 ✋</h3>
@@ -75,7 +124,21 @@ app.innerHTML = `
 const video = document.querySelector('#webcam');
 const canvas = document.querySelector('#overlay');
 const stage = document.querySelector('#stage');
+const playArea = document.querySelector('#playArea');
 const emptyState = document.querySelector('#emptyState');
+const harvestRules = document.querySelector('#harvestRules');
+const hardHarvestRule = document.querySelector('#hardHarvestRule');
+const startCountdown = document.querySelector('#startCountdown');
+const countdownValue = document.querySelector('#countdownValue');
+const confirmHarvestRulesBtn = document.querySelector('#confirmHarvestRulesBtn');
+const harvestSign = document.querySelector('#harvestSign');
+const signFruitIcon = document.querySelector('#signFruitIcon');
+const signFruitName = document.querySelector('#signFruitName');
+const rulesFruitIcon = document.querySelector('#rulesFruitIcon');
+const rulesFruitName = document.querySelector('#rulesFruitName');
+const modeTipTitle = document.querySelector('#modeTipTitle');
+const modeTipText = document.querySelector('#modeTipText');
+const modeCards = [...document.querySelectorAll('.mode-card')];
 const startButton = document.querySelector('#startButton');
 const emptyStartBtn = document.querySelector('#emptyStartBtn');
 const stopButton = document.querySelector('#stopButton');
@@ -94,10 +157,71 @@ const camera = new CameraManager(video);
 const renderer = new GameRenderer(canvas);
 const game = new SlingshotGame();
 
+let selectedMode = 'CLASSIC';
 let running = false;
 let lastVideoTime = -1;
 let frameCount = 0;
 let lastFpsUpdate = performance.now();
+
+function selectMode(mode) {
+  selectedMode = mode;
+  const isHardHarvest = mode === 'HARVEST_HARD';
+  const isHarvest = mode === 'HARVEST' || isHardHarvest;
+  playArea.classList.toggle('harvest-mode', isHarvest);
+  modeCards.forEach((card) => {
+    const selected = card.dataset.mode === mode;
+    card.classList.toggle('selected', selected);
+    card.setAttribute('aria-pressed', String(selected));
+  });
+
+  modeTipTitle.textContent = isHardHarvest ? '🐝 水果採集困難版' : (isHarvest ? '🍎 當季水果採收' : '🎯 經典彈弓');
+  modeTipText.textContent = isHardHarvest
+    ? '當季水果規則照舊；注意蜂巢，射中每次扣5分。'
+    : (isHarvest
+      ? '牌子上的水果照原分數；其他水果也能打落，固定 +5 分。'
+      : '想射哪種就射哪種；每顆水果命中固定 +15 分。');
+  const startLabel = isHardHarvest
+    ? '啟動 Webcam · 水果採集困難版 🐝'
+    : (isHarvest ? '啟動 Webcam · 水果採收 🍎' : '啟動 Webcam · 經典彈弓 🎯');
+  startButton.textContent = startLabel;
+  emptyStartBtn.textContent = startLabel;
+}
+
+function syncHarvestUi() {
+  const target = game.harvestTarget;
+  const showSign = running && selectedMode !== 'CLASSIC' && Boolean(target);
+  harvestSign.hidden = !showSign;
+  harvestRules.hidden = !(running && game.phase === 'RULES');
+  hardHarvestRule.hidden = !(running && selectedMode === 'HARVEST_HARD' && game.phase === 'RULES');
+  const showCountdown = running && game.phase === 'COUNTDOWN';
+  startCountdown.hidden = !showCountdown;
+  countdownValue.textContent = game.countdownValue || '3';
+  countdownValue.classList.toggle('go', game.countdownValue === 'GO!');
+
+  if (target) {
+    const imageUrl = `${ART_BASE_URL}${target.assetKey}`;
+    if (signFruitIcon.getAttribute('src') !== imageUrl) signFruitIcon.src = imageUrl;
+    signFruitIcon.alt = target.name;
+    signFruitName.textContent = target.name;
+    if (rulesFruitIcon.getAttribute('src') !== imageUrl) rulesFruitIcon.src = imageUrl;
+    rulesFruitIcon.alt = target.name;
+    rulesFruitName.textContent = target.name;
+  }
+}
+
+// 模式選擇
+modeCards.forEach((card) => {
+  card.addEventListener('click', () => {
+    if (!running) selectMode(card.dataset.mode);
+  });
+});
+selectMode(selectedMode);
+
+confirmHarvestRulesBtn.addEventListener('click', () => {
+  game.confirmHarvestRules();
+  sound.playClick();
+  syncHarvestUi();
+});
 
 // 音效開關切換
 soundToggle.addEventListener('click', () => {
@@ -142,8 +266,15 @@ function renderLoop() {
     // AI 視覺推論
     const { poseResult, handResult } = visionEngine.detect(video, timestamp);
 
-    // 清理畫布
+    // 以使用者提供的樹林插圖作為全畫面背景，再疊去背人像與骨架
     renderer.clear(width, height);
+    renderer.drawOrchardBackground(width, height);
+    const personVisible = renderer.drawPersonCutout(
+      video,
+      poseResult?.segmentationMasks?.[0] || null,
+      width,
+      height
+    );
 
     // 繪製微光骨架輔助
     if (poseResult?.landmarks?.[0]) {
@@ -153,21 +284,41 @@ function renderLoop() {
     // 遊戲物理與介面更新
     game.update({ handResult, poseResult }, renderer, width, height);
 
+    // 遮罩暫時掉點時不顯示原始房間背景；保留遊戲與骨架並提醒玩家
+    if (!personVisible && (game.phase === 'READY' || game.phase === 'PLAYING')) {
+      const notice = visionEngine.segmentationAvailable
+        ? '人物辨識中，請站到畫面中央'
+        : '人物分離暫不可用，改以骨架輔助';
+      renderer.drawPersonMaskNotice(width, height, notice);
+    }
+    syncHarvestUi();
+
     // 更新狀態列文字與按鈕
     const isCalibrating = game.phase === 'CALIBRATION';
     skipTutorialBtn.style.display = isCalibrating ? 'inline-flex' : 'none';
 
     if (game.phase === 'CALIBRATION') {
       gamePhaseText.textContent = `動作校準 (${game.tutorialStep}/3)`;
+    } else if (game.phase === 'RULES') {
+      gamePhaseText.textContent = '確認本回合採收目標';
+    } else if (game.phase === 'COUNTDOWN') {
+      gamePhaseText.textContent = `即將開始 ${game.countdownValue}`;
+    } else if (game.phase === 'READY') {
+      gamePhaseText.textContent = '準備好了，第一發開始計時';
     } else if (game.phase === 'PLAYING') {
       gamePhaseText.textContent = `挑戰中 ⏱️ ${game.timeLeft}s`;
     } else if (game.phase === 'FINISHED') {
       gamePhaseText.textContent = `時間到！得分: ${game.score}`;
     }
 
-    const detected = (poseResult?.landmarks?.[0] || handResult?.landmarks?.length);
-    detectionEl.textContent = detected ? '正常' : '未入鏡';
+    const detected = Boolean(poseResult?.landmarks?.[0] || handResult?.landmarks?.length);
+    detectionEl.textContent = !detected
+      ? '未入鏡'
+      : (personVisible
+        ? '人物已分離'
+        : (visionEngine.segmentationAvailable ? '人物辨識中' : '僅顯示骨架'));
     updateFps();
+    poseResult?.close?.();
   }
 
   requestAnimationFrame(renderLoop);
@@ -187,11 +338,16 @@ async function start() {
       statusEl.textContent = msg;
     });
 
+    statusEl.textContent = '載入果園與水果插圖…';
+    await renderer.assetsReady;
+
     statusEl.textContent = '請求攝影機權限…';
+    stage.classList.add('person-cutout');
     await camera.start();
 
     statusEl.textContent = '初始化畫布…';
     renderer.resize(stage);
+    game.setMode(selectedMode);
     game.init(stage.clientWidth, stage.clientHeight);
 
     running = true;
@@ -204,6 +360,7 @@ async function start() {
     requestAnimationFrame(renderLoop);
   } catch (error) {
     console.error('啟動失敗詳細資訊:', error);
+    stage.classList.remove('person-cutout');
     statusEl.textContent = '啟動失敗';
     startButton.disabled = false;
     emptyStartBtn.disabled = false;
@@ -215,8 +372,12 @@ function stop() {
   sound.playClick();
   running = false;
   camera.stop();
+  stage.classList.remove('person-cutout');
   renderer.clear(stage.clientWidth, stage.clientHeight);
   emptyState.hidden = false;
+  harvestRules.hidden = true;
+  startCountdown.hidden = true;
+  harvestSign.hidden = true;
   startButton.disabled = false;
   emptyStartBtn.disabled = false;
   stopButton.disabled = true;

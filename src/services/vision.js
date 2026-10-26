@@ -10,6 +10,7 @@ export class VisionEngine {
     this.poseLandmarker = null;
     this.handLandmarker = null;
     this.isLoading = false;
+    this.segmentationAvailable = false;
   }
 
   async init(onProgress = () => {}) {
@@ -21,12 +22,26 @@ export class VisionEngine {
       onProgress('載入 WASM 核心…');
       this.vision = await FilesetResolver.forVisionTasks(WASM_URL);
 
-      onProgress('載入人體姿勢模型…');
-      this.poseLandmarker = await this.createModel(
-        PoseLandmarker,
-        POSE_MODEL_URL,
-        { numPoses: 1, minPoseDetectionConfidence: 0.5, minPosePresenceConfidence: 0.5, minTrackingConfidence: 0.5 }
-      );
+      onProgress('載入人體姿勢模型與人物遮罩…');
+      const poseOptions = {
+        numPoses: 1,
+        minPoseDetectionConfidence: 0.5,
+        minPosePresenceConfidence: 0.5,
+        minTrackingConfidence: 0.5,
+      };
+      try {
+        this.poseLandmarker = await this.createModel(
+          PoseLandmarker,
+          POSE_MODEL_URL,
+          { ...poseOptions, outputSegmentationMasks: true }
+        );
+        this.segmentationAvailable = true;
+      } catch (segmentationError) {
+        // 某些裝置/模型組合不支援遮罩時，保留姿勢偵測，遊戲畫面不退回顯示房間背景
+        console.warn('人物遮罩無法啟用，改用骨架備援：', segmentationError);
+        this.poseLandmarker = await this.createModel(PoseLandmarker, POSE_MODEL_URL, poseOptions);
+        this.segmentationAvailable = false;
+      }
 
       onProgress('載入雙手手勢模型…');
       this.handLandmarker = await this.createModel(

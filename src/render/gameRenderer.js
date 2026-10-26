@@ -11,6 +11,162 @@ export class GameRenderer {
     this.canvas = canvasElement;
     this.ctx = canvasElement.getContext('2d');
     this.particles = [];
+    this.personCanvas = document.createElement('canvas');
+    this.personCtx = this.personCanvas.getContext('2d');
+    this.maskCanvas = document.createElement('canvas');
+    this.maskCtx = this.maskCanvas.getContext('2d');
+    this.maskImageData = null;
+    this.lastMaskUpdateAt = 0;
+    this.MASK_UPDATE_INTERVAL_MS = 66;
+    this.MASK_GRACE_MS = 260;
+    this.artImages = {};
+    this.assetsReady = this.loadArtAssets();
+  }
+
+  async loadArtAssets() {
+    const filenames = [
+      'orchard-background-muted.jpg',
+      'fruit-red-apple.png',
+      'fruit-orange.png',
+      'fruit-peach.png',
+      'fruit-lemon.png',
+      'fruit-green-apple.png',
+    ];
+    const loaded = await Promise.all(filenames.map((filename) => new Promise((resolve) => {
+      const image = new Image();
+      image.onload = () => resolve([filename, image]);
+      image.onerror = () => {
+        console.warn(`遊戲插圖載入失敗，改用內建繪圖：${filename}`);
+        resolve([filename, null]);
+      };
+      image.src = `${import.meta.env.BASE_URL}art/${filename}`;
+    })));
+    this.artImages = Object.fromEntries(loaded);
+    return this.artImages;
+  }
+
+  drawCoverImage(ctx, source, sourceWidth, sourceHeight, width, height) {
+    if (!sourceWidth || !sourceHeight) return;
+    const sourceAspect = sourceWidth / sourceHeight;
+    const targetAspect = width / height;
+    let sx = 0;
+    let sy = 0;
+    let sw = sourceWidth;
+    let sh = sourceHeight;
+
+    if (sourceAspect > targetAspect) {
+      sw = sourceHeight * targetAspect;
+      sx = (sourceWidth - sw) / 2;
+    } else {
+      sh = sourceWidth / targetAspect;
+      sy = (sourceHeight - sh) / 2;
+    }
+    ctx.drawImage(source, sx, sy, sw, sh, 0, 0, width, height);
+  }
+
+  drawOrchardBackground(width, height) {
+    const image = this.artImages['orchard-background-muted.jpg'];
+    if (!image) return false;
+    this.drawCoverImage(this.ctx, image, image.naturalWidth, image.naturalHeight, width, height);
+    return true;
+  }
+
+  // 只把人物遮罩內的 webcam 像素畫到遊戲畫面，遮罩以外保持透明
+  drawPersonCutout(video, mask, width, height) {
+    const now = performance.now();
+    if (mask && (!this.maskCanvas.width || now - this.lastMaskUpdateAt >= this.MASK_UPDATE_INTERVAL_MS)) {
+      const maskWidth = mask.width;
+      const maskHeight = mask.height;
+      if (!maskWidth || !maskHeight) return false;
+      const pixelCount = maskWidth * maskHeight;
+      try {
+        const isFloat = Boolean(mask.hasFloat32Array?.());
+        const values = isFloat ? mask.getAsFloat32Array() : mask.getAsUint8Array();
+        if (values.length !== pixelCount && values.length !== pixelCount * 4) return false;
+
+        if (this.maskCanvas.width !== maskWidth || this.maskCanvas.height !== maskHeight) {
+          this.maskCanvas.width = maskWidth;
+          this.maskCanvas.height = maskHeight;
+          this.maskCtx = this.maskCanvas.getContext('2d');
+          this.maskImageData = this.maskCtx.createImageData(maskWidth, maskHeight);
+        }
+
+        let maxValue = 0;
+        for (let i = 0; i < values.length; i++) maxValue = Math.max(maxValue, values[i]);
+        const scale = isFloat || maxValue <= 1 ? 1 : 1 / 255;
+        const rgba = this.maskImageData.data;
+        for (let i = 0; i < pixelCount; i++) {
+          const src = values.length === pixelCount ? i : i * 4;
+          const sample = values.length === pixelCount
+            ? values[src]
+            : Math.max(values[src], values[src + 1], values[src + 2], values[src + 3]);
+          const confidence = Math.max(0, Math.min(1, sample * scale));
+          const soft = Math.max(0, Math.min(1, (confidence - 0.28) / 0.44));
+          const alpha = Math.round(soft * soft * (3 - 2 * soft) * 255);
+          const dst = i * 4;
+          rgba[dst] = 255;
+          rgba[dst + 1] = 255;
+          rgba[dst + 2] = 255;
+          rgba[dst + 3] = alpha;
+        }
+        this.maskCtx.putImageData(this.maskImageData, 0, 0);
+        this.lastMaskUpdateAt = now;
+      } catch (error) {
+        console.warn('人物遮罩影格無法讀取：', error);
+        return false;
+      }
+    }
+
+    if (!this.maskCanvas.width || now - this.lastMaskUpdateAt > this.MASK_GRACE_MS || !video.videoWidth) {
+      return false;
+    }
+
+    if (this.personCanvas.width !== width || this.personCanvas.height !== height) {
+      this.personCanvas.width = width;
+      this.personCanvas.height = height;
+      this.personCtx = this.personCanvas.getContext('2d');
+    }
+
+    const personCtx = this.personCtx;
+    personCtx.clearRect(0, 0, width, height);
+    personCtx.save();
+    personCtx.translate(width, 0);
+    personCtx.scale(-1, 1);
+    this.drawCoverImage(personCtx, video, video.videoWidth, video.videoHeight, width, height);
+    personCtx.restore();
+
+    personCtx.save();
+    personCtx.globalCompositeOperation = 'destination-in';
+    personCtx.translate(width, 0);
+    personCtx.scale(-1, 1);
+    this.drawCoverImage(personCtx, this.maskCanvas, this.maskCanvas.width, this.maskCanvas.height, width, height);
+    personCtx.restore();
+
+    this.ctx.drawImage(this.personCanvas, 0, 0, width, height);
+    return true;
+  }
+
+  drawPersonMaskNotice(width, height, text = '人物辨識中，請站到畫面中央') {
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.font = 'bold 18px system-ui, sans-serif';
+    const textWidth = ctx.measureText(text).width;
+    const boxWidth = Math.min(width - 32, textWidth + 36);
+    const boxHeight = 48;
+    const x = (width - boxWidth) / 2;
+    const y = height * 0.62 - boxHeight / 2;
+    ctx.beginPath();
+    ctx.roundRect ? ctx.roundRect(x, y, boxWidth, boxHeight, 14) : ctx.rect(x, y, boxWidth, boxHeight);
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.82)';
+    ctx.fill();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = 'rgba(250, 204, 21, 0.8)';
+    ctx.stroke();
+    ctx.fillStyle = '#fef3c7';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, width / 2, y + boxHeight / 2, boxWidth - 20);
+    ctx.restore();
   }
 
   resize(containerElement) {
@@ -51,9 +207,17 @@ export class GameRenderer {
     ctx.restore();
   }
 
-  // 頂部茂盛樹冠（橫跨整片頂部）
-  drawTreeCanopy(width, _height) {
+  // 果園插圖做為透明樹冠邊框；載入失敗時退回原本 Canvas 樹冠
+  drawTreeCanopy(width, height) {
     const ctx = this.ctx;
+    const orchard = this.artImages['orchard-frame-muted.png'];
+    if (orchard?.complete && orchard.naturalWidth > 0) {
+      ctx.save();
+      ctx.drawImage(orchard, 0, 0, width, height);
+      ctx.restore();
+      return;
+    }
+
     ctx.save();
 
     // 大樹幹橫木
@@ -95,9 +259,9 @@ export class GameRenderer {
     ctx.restore();
   }
 
-  // 繪製水果（極簡版：大顆 emoji，無外框無底圖，適合長輩辨識）
-  // isAssigned: 被指定為「只能打這顆」的目標 → 金色虛線圈 + 輕微脈動
-  drawFruit(fruit, isTargeted = false, isAssigned = false, shakeOffsetX = 0) {
+  // 使用去白底的手繪水果素材；圖片未載入時退回 Emoji
+  // isAssigned: 經典模式指定單顆目標 → 金色虛線圈 + 輕微脈動
+  drawFruit(fruit, isTargeted = false, isAssigned = false, shakeOffsetX = 0, isSeasonRevealed = false) {
     const ctx = this.ctx;
     ctx.save();
     ctx.translate(fruit.x + shakeOffsetX, fruit.y);
@@ -106,15 +270,20 @@ export class GameRenderer {
     const scale = fruit.scale || 1;
     ctx.scale(scale, scale);
     const r = fruit.radius;
+    const image = this.artImages[fruit.assetKey];
+    const hasArt = Boolean(image?.complete && image.naturalWidth > 0);
 
-    // 指定目標：金色虛線圈旋轉 + 輕微整體脈動（長輩遠遠就看得出「打這顆」）
+    // 經典模式目標圈依圖片大小包圍水果
     if (isAssigned) {
       const t = performance.now();
       const pulse = 1 + Math.sin(t * 0.006) * 0.05;
+      const ringR = hasArt
+        ? Math.max(r + 16, (Math.min(r * 2.15 / image.naturalWidth, r * 2.15 / image.naturalHeight) * Math.max(image.naturalWidth, image.naturalHeight)) / 2 + 12)
+        : r + 16;
       ctx.save();
       ctx.scale(pulse, pulse);
       ctx.beginPath();
-      ctx.arc(0, 0, r + 16, 0, Math.PI * 2);
+      ctx.arc(0, 0, ringR, 0, Math.PI * 2);
       ctx.setLineDash([9, 7]);
       ctx.lineDashOffset = -t * 0.03;
       ctx.lineWidth = 4;
@@ -125,27 +294,134 @@ export class GameRenderer {
       ctx.restore();
     }
 
-    // 被瞄準時輕微放大脈動提示（取代原本的光環）
-    if (isTargeted) {
-      ctx.scale(1.12 + Math.sin(performance.now() * 0.012) * 0.06, 1.12 + Math.sin(performance.now() * 0.012) * 0.06);
+    // 當季水果補位時短暫亮綠圈，讓玩家看見目標種類已補回
+    if (isSeasonRevealed) {
+      const t = performance.now();
+      ctx.save();
+      ctx.globalAlpha = 0.35 + Math.sin(t * 0.02) * 0.2;
+      ctx.beginPath();
+      ctx.arc(0, 0, r + 14, 0, Math.PI * 2);
+      ctx.lineWidth = 4;
+      ctx.strokeStyle = '#a3e635';
+      ctx.shadowColor = '#a3e635';
+      ctx.shadowBlur = 12;
+      ctx.stroke();
+      ctx.restore();
     }
 
-    // 懸掛枝梗（細線，表示水果掛在樹上）
-    if (fruit.state === 'HANGING') {
+    // 被瞄準時輕微放大脈動提示
+    if (isTargeted) {
+      const pulse = 1.12 + Math.sin(performance.now() * 0.012) * 0.06;
+      ctx.scale(pulse, pulse);
+    }
+
+    if (hasArt) {
+      // 等比例縮放裁切過的透明水果圖，保留不同水果原本的長寬比例
+      const maxSize = r * 2.15;
+      const imageScale = Math.min(maxSize / image.naturalWidth, maxSize / image.naturalHeight);
+      const drawW = image.naturalWidth * imageScale;
+      const drawH = image.naturalHeight * imageScale;
+      ctx.drawImage(image, -drawW / 2, -drawH / 2, drawW, drawH);
+    } else {
+      // 備援：舊版 Emoji 與枝梗
+      if (fruit.state === 'HANGING') {
+        ctx.beginPath();
+        ctx.moveTo(0, -r);
+        ctx.quadraticCurveTo(3, -r - 10, 0, -r - 16);
+        ctx.lineWidth = 2.5;
+        ctx.strokeStyle = '#6b4423';
+        ctx.stroke();
+      }
+      ctx.font = `${Math.round(r * 2.1)}px sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(fruit.icon, 0, r * 0.08);
+    }
+
+    ctx.restore();
+  }
+
+  drawBeehive(hive) {
+    const ctx = this.ctx;
+    const r = hive.radius;
+    ctx.save();
+    ctx.translate(hive.x, hive.y);
+
+    // 懸掛枝梗
+    ctx.beginPath();
+    ctx.moveTo(0, -r * 1.04);
+    ctx.lineTo(0, -r * 0.72);
+    ctx.lineWidth = Math.max(2, r * 0.08);
+    ctx.strokeStyle = '#5b3b25';
+    ctx.stroke();
+
+    // 圓潤蜂巢外型
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.66, r * 0.38);
+    ctx.quadraticCurveTo(-r * 0.82, -r * 0.28, -r * 0.34, -r * 0.61);
+    ctx.quadraticCurveTo(0, -r * 0.92, r * 0.34, -r * 0.61);
+    ctx.quadraticCurveTo(r * 0.82, -r * 0.28, r * 0.66, r * 0.38);
+    ctx.quadraticCurveTo(0, r * 0.70, -r * 0.66, r * 0.38);
+    ctx.closePath();
+    ctx.fillStyle = '#fbbf24';
+    ctx.fill();
+    ctx.lineWidth = Math.max(2, r * 0.09);
+    ctx.strokeStyle = '#713f12';
+    ctx.stroke();
+
+    // 蜂巢條紋
+    ctx.save();
+    ctx.clip();
+    ctx.lineWidth = Math.max(3, r * 0.16);
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = '#92400e';
+    for (const stripeY of [-r * 0.18, r * 0.12, r * 0.40]) {
       ctx.beginPath();
-      ctx.moveTo(0, -r);
-      ctx.quadraticCurveTo(3, -r - 10, 0, -r - 16);
-      ctx.lineWidth = 2.5;
-      ctx.strokeStyle = '#6b4423';
+      ctx.moveTo(-r, stripeY);
+      ctx.quadraticCurveTo(0, stripeY + r * 0.08, r, stripeY);
       ctx.stroke();
     }
+    ctx.restore();
 
-    // 水果 emoji 本體（放大、乾淨無裝飾）
-    ctx.font = `${Math.round(r * 2.1)}px sans-serif`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(fruit.icon, 0, r * 0.08);
+    // 巢口
+    ctx.beginPath();
+    ctx.ellipse(0, r * 0.28, r * 0.15, r * 0.10, 0, 0, Math.PI * 2);
+    ctx.fillStyle = '#422006';
+    ctx.fill();
 
+    // 小蜜蜂標記以向量繪製，避免不同系統的 Emoji 字型差異
+    ctx.save();
+    ctx.translate(r * 0.78, -r * 0.62);
+    ctx.rotate(-0.28);
+    ctx.fillStyle = '#fff7ed';
+    ctx.beginPath();
+    ctx.ellipse(-r * 0.09, -r * 0.13, r * 0.13, r * 0.09, -0.5, 0, Math.PI * 2);
+    ctx.ellipse(r * 0.10, -r * 0.13, r * 0.13, r * 0.09, 0.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.ellipse(0, 0, r * 0.24, r * 0.15, 0, 0, Math.PI * 2);
+    ctx.fillStyle = '#facc15';
+    ctx.fill();
+    ctx.lineWidth = Math.max(1.5, r * 0.05);
+    ctx.strokeStyle = '#422006';
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.07, -r * 0.13);
+    ctx.lineTo(-r * 0.07, r * 0.13);
+    ctx.moveTo(r * 0.06, -r * 0.13);
+    ctx.lineTo(r * 0.06, r * 0.13);
+    ctx.lineWidth = Math.max(1.5, r * 0.05);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(r * 0.22, -r * 0.02);
+    ctx.lineTo(r * 0.34, 0);
+    ctx.lineTo(r * 0.22, r * 0.06);
+    ctx.closePath();
+    ctx.fillStyle = '#422006';
+    ctx.fill();
+    ctx.restore();
     ctx.restore();
   }
 
@@ -182,6 +458,33 @@ export class GameRenderer {
     ctx.textBaseline = 'middle';
     ctx.fillStyle = '#fde68a';
     ctx.fillText(`🎯 ${text}`, canvasW / 2, by + bh / 2 + 1);
+    ctx.restore();
+  }
+
+  // 採收模式打錯水果時的大字提示
+  drawHarvestFeedback(text, width, height) {
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.font = 'bold 30px system-ui, sans-serif';
+    const textW = ctx.measureText(text).width;
+    const bw = Math.min(width - 32, textW + 48);
+    const bh = 64;
+    const bx = (width - bw) / 2;
+    const by = height * 0.52 - bh / 2;
+
+    ctx.beginPath();
+    ctx.roundRect ? ctx.roundRect(bx, by, bw, bh, 18) : ctx.rect(bx, by, bw, bh);
+    ctx.fillStyle = 'rgba(69, 10, 10, 0.9)';
+    ctx.fill();
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = '#f87171';
+    ctx.stroke();
+
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#fff7ed';
+    ctx.font = 'bold 30px system-ui, sans-serif';
+    ctx.fillText(text, width / 2, by + bh / 2 + 1, bw - 24);
     ctx.restore();
   }
 

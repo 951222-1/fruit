@@ -1,10 +1,19 @@
 import { sound } from '../services/audio.js';
 
+const HARVEST_TYPES = [
+  { id: 'red-apple', name: '紅蘋果', icon: '🍎', assetKey: 'fruit-red-apple.png', score: 10, color: '#ef4444', haloColor: 'rgba(239, 68, 68, 0.75)', particleColor: '#f87171' },
+  { id: 'orange', name: '甜橙', icon: '🍊', assetKey: 'fruit-orange.png', score: 10, color: '#f97316', haloColor: 'rgba(249, 115, 22, 0.75)', particleColor: '#fb923c' },
+  { id: 'peach', name: '水蜜桃', icon: '🍑', assetKey: 'fruit-peach.png', score: 15, color: '#f472b6', haloColor: 'rgba(244, 114, 182, 0.75)', particleColor: '#fbcfe8' },
+  { id: 'lemon', name: '黃檸檬', icon: '🍋', assetKey: 'fruit-lemon.png', score: 10, color: '#eab308', haloColor: 'rgba(234, 179, 8, 0.75)', particleColor: '#fef08a' },
+  { id: 'green-apple', name: '青蘋果', icon: '🍏', assetKey: 'fruit-green-apple.png', score: 20, color: '#84cc16', haloColor: 'rgba(132, 204, 22, 0.75)', particleColor: '#a3e635' },
+];
+
 export class SlingshotGame {
   constructor() {
     this.phase = 'CALIBRATION'; // 'CALIBRATION' | 'COUNTDOWN' | 'PLAYING' | 'FINISHED'
-    this.tutorialStep = 1; // 1: 與肩平行, 2: 往下拉弓, 3: 蓄力3秒, 4: 完成
+    this.tutorialStep = 1; // 1: 雙手併攏(引導文字仍提示過肩), 2: 往下拉, 3: 蓄力3秒, 4: 完成
     this.tutorialStepTimer = 0;
+    this.tutorialStartY = null;
 
     // 1 分鐘計時
     this.timeLeft = 60;
@@ -25,6 +34,8 @@ export class SlingshotGame {
     this.chargeMs = 0;
     this.lastChargeSecond = 0;
     this.lastUpdateTime = 0;
+    this.countdownStartedAt = 0;
+    this.countdownValue = '3';
 
     // 偵測穩定性：平滑、肩線記憶、斷線寬限、防抖計數
     this.smoothMidX = null;
@@ -39,16 +50,151 @@ export class SlingshotGame {
     this.outZoneAt = 0;
 
     this.fruits = [];
+    this.hives = [];
     this.projectiles = [];
     this.popups = [];
     this.targetedFruitId = null;
 
-    // 指定目標玩法：只能打這顆水果
+    // 採收模式每局指定一種水果；困難版沿用採收規則並額外加入蜂巢
+    this.mode = 'CLASSIC';
+    this.hardMode = false;
     this.assignedTargetId = null;
+    this.harvestTargetType = null;
+    this.previousHarvestTargetType = null;
+    this.harvestFeedbackUntil = 0;
+    this.harvestFeedbackText = '';
+    this.countdownStartedAt = 0;
+    this.countdownValue = '3';
   }
 
-  // ===== 指定目標玩法 =====
-  // 確認當前指定目標有效（還掛在樹上），無效就指定新的
+  setMode(mode) {
+    this.hardMode = mode === 'HARVEST_HARD';
+    this.mode = mode === 'HARVEST' || this.hardMode ? 'HARVEST' : 'CLASSIC';
+    this.hives = [];
+    this.assignedTargetId = null;
+    this.harvestTargetType = null;
+    this.previousHarvestTargetType = null;
+    this.harvestFeedbackUntil = 0;
+    this.harvestFeedbackText = '';
+    this.countdownStartedAt = 0;
+    this.countdownValue = '3';
+  }
+
+  get harvestTarget() {
+    return HARVEST_TYPES.find((type) => type.id === this.harvestTargetType) || null;
+  }
+
+  chooseNextHarvestTarget() {
+    const choices = HARVEST_TYPES.filter((type) => type.id !== this.previousHarvestTargetType);
+    const pool = choices.length ? choices : HARVEST_TYPES;
+    const pick = pool[Math.floor(Math.random() * pool.length)];
+    this.harvestTargetType = pick.id;
+    this.previousHarvestTargetType = pick.id;
+    return pick;
+  }
+
+  applyHarvestType(fruit, type) {
+    fruit.harvestType = type.id;
+    fruit.name = type.name;
+    fruit.icon = type.icon;
+    fruit.assetKey = type.assetKey;
+    fruit.score = type.score;
+    fruit.color = type.color;
+    fruit.haloColor = type.haloColor;
+    fruit.particleColor = type.particleColor;
+  }
+
+  randomizeHarvestFruit(fruit) {
+    const type = HARVEST_TYPES[Math.floor(Math.random() * HARVEST_TYPES.length)];
+    this.applyHarvestType(fruit, type);
+  }
+
+  // 採收模式硬性保證：樹上至少有 3 顆當季水果
+  ensureMinimumSeasonFruits({ flash = true } = {}) {
+    const target = this.harvestTarget;
+    if (this.mode !== 'HARVEST' || !target) return;
+
+    const markSeasonFruit = (fruit) => {
+      this.applyHarvestType(fruit, target);
+      fruit.shakeUntil = 0;
+      fruit.shakeOffsetX = 0;
+      if (flash) fruit.seasonRevealUntil = performance.now() + 900;
+    };
+
+    let seasonCount = this.fruits.filter(
+      (fruit) => fruit.state === 'HANGING' && fruit.harvestType === target.id,
+    ).length;
+
+    while (seasonCount < 3) {
+      const nonSeasonHanging = this.fruits.filter(
+        (fruit) => fruit.state === 'HANGING' && fruit.harvestType !== target.id,
+      );
+
+      if (nonSeasonHanging.length) {
+        const slot = nonSeasonHanging[Math.floor(Math.random() * nonSeasonHanging.length)];
+        markSeasonFruit(slot);
+        seasonCount += 1;
+        continue;
+      }
+
+      // 樹上沒有可補位的水果時，讓一顆待重生水果立即回到原位當季，避免少於 3 顆
+      const pending = this.fruits.filter((fruit) => fruit.state === 'RESPAWNING' || fruit.state === 'FALLING');
+      if (!pending.length) break;
+      const respawning = pending.filter((fruit) => fruit.state === 'RESPAWNING');
+      const pool = respawning.length ? respawning : pending;
+      const slot = pool[Math.floor(Math.random() * pool.length)];
+      slot.state = 'HANGING';
+      slot.x = slot.originX;
+      slot.y = slot.originY;
+      slot.vx = 0;
+      slot.vy = 0;
+      slot.rotation = 0;
+      slot.respawnTimer = 0;
+      markSeasonFruit(slot);
+      seasonCount += 1;
+    }
+  }
+
+  // 確認規則後先倒數；60 秒仍等第一發彈丸射出才開始
+  confirmHarvestRules() {
+    if (this.mode !== 'HARVEST' || this.phase !== 'RULES') return;
+    this.phase = 'COUNTDOWN';
+    this.timeLeft = 60;
+    this.lastTickTime = 0;
+    this.countdownStartedAt = performance.now();
+    this.countdownValue = '3';
+    this.resetCharge();
+    this.slingshotState = 'IDLE';
+    this.lastUpdateTime = this.countdownStartedAt;
+  }
+
+  handleStartCountdown() {
+    if (this.phase !== 'COUNTDOWN') return;
+    const elapsed = performance.now() - this.countdownStartedAt;
+    let nextValue;
+
+    if (elapsed < 1000) nextValue = '3';
+    else if (elapsed < 2000) nextValue = '2';
+    else if (elapsed < 3000) nextValue = '1';
+    else if (elapsed < 4000) nextValue = 'GO!';
+    else {
+      this.phase = 'READY';
+      this.countdownStartedAt = 0;
+      this.countdownValue = '';
+      this.lastUpdateTime = performance.now();
+      this.resetCharge();
+      this.slingshotState = 'IDLE';
+      return;
+    }
+
+    if (nextValue !== this.countdownValue) {
+      this.countdownValue = nextValue;
+      if (nextValue === 'GO!') sound.playCheck();
+      else sound.playTick();
+    }
+  }
+
+  // 經典模式：被指定的單顆水果有效才保留，否則重新指定
   ensureTarget() {
     const cur = this.fruits.find((f) => f.id === this.assignedTargetId);
     if (cur && cur.state === 'HANGING') return;
@@ -68,6 +214,9 @@ export class SlingshotGame {
   }
 
   init(width, height) {
+    if (this.mode === 'HARVEST') {
+      this.chooseNextHarvestTarget();
+    }
     this.initFruits(width, height);
     this.updateAnchor(width, height);
   }
@@ -84,13 +233,13 @@ export class SlingshotGame {
   // 頂部 7 顆豐富水果佈局（橫跨整片頂部樹梢）
   initFruits(width, height) {
     const configs = [
-      { id: 0, name: '紅蘋果', icon: '🍎', color: '#ef4444', haloColor: 'rgba(239, 68, 68, 0.75)', particleColor: '#f87171', score: 10, xRatio: 0.12, y: 100 },
-      { id: 1, name: '甜橙', icon: '🍊', color: '#f97316', haloColor: 'rgba(249, 115, 22, 0.75)', particleColor: '#fb923c', score: 10, xRatio: 0.24, y: 125 },
-      { id: 2, name: '水蜜桃', icon: '🍑', color: '#f472b6', haloColor: 'rgba(244, 114, 182, 0.75)', particleColor: '#fbcfe8', score: 15, xRatio: 0.37, y: 88 },
-      { id: 3, name: '大紅蘋', icon: '🍎', color: '#ef4444', haloColor: 'rgba(239, 68, 68, 0.75)', particleColor: '#f87171', score: 10, xRatio: 0.50, y: 115 },
-      { id: 4, name: '水蜜桃', icon: '🍑', color: '#f472b6', haloColor: 'rgba(244, 114, 182, 0.75)', particleColor: '#fbcfe8', score: 15, xRatio: 0.63, y: 88 },
-      { id: 5, name: '黃檸檬', icon: '🍋', color: '#eab308', haloColor: 'rgba(234, 179, 8, 0.75)', particleColor: '#fef08a', score: 10, xRatio: 0.76, y: 125 },
-      { id: 6, name: '青蘋果', icon: '🍏', color: '#84cc16', haloColor: 'rgba(132, 204, 22, 0.75)', particleColor: '#a3e635', score: 20, xRatio: 0.88, y: 100 },
+      { id: 0, harvestType: 'red-apple', name: '紅蘋果', icon: '🍎', assetKey: 'fruit-red-apple.png', color: '#ef4444', haloColor: 'rgba(239, 68, 68, 0.75)', particleColor: '#f87171', score: 10, xRatio: 0.12, y: 145 },
+      { id: 1, harvestType: 'orange', name: '甜橙', icon: '🍊', assetKey: 'fruit-orange.png', color: '#f97316', haloColor: 'rgba(249, 115, 22, 0.75)', particleColor: '#fb923c', score: 10, xRatio: 0.24, y: 125 },
+      { id: 2, harvestType: 'peach', name: '水蜜桃', icon: '🍑', assetKey: 'fruit-peach.png', color: '#f472b6', haloColor: 'rgba(244, 114, 182, 0.75)', particleColor: '#fbcfe8', score: 15, xRatio: 0.37, y: 88 },
+      { id: 3, harvestType: 'red-apple', name: '大紅蘋', icon: '🍎', assetKey: 'fruit-red-apple.png', color: '#ef4444', haloColor: 'rgba(239, 68, 68, 0.75)', particleColor: '#f87171', score: 10, xRatio: 0.50, y: 115 },
+      { id: 4, harvestType: 'peach', name: '水蜜桃', icon: '🍑', assetKey: 'fruit-peach.png', color: '#f472b6', haloColor: 'rgba(244, 114, 182, 0.75)', particleColor: '#fbcfe8', score: 15, xRatio: 0.63, y: 88 },
+      { id: 5, harvestType: 'lemon', name: '黃檸檬', icon: '🍋', assetKey: 'fruit-lemon.png', color: '#eab308', haloColor: 'rgba(234, 179, 8, 0.75)', particleColor: '#fef08a', score: 10, xRatio: 0.76, y: 125 },
+      { id: 6, harvestType: 'green-apple', name: '青蘋果', icon: '🍏', assetKey: 'fruit-green-apple.png', color: '#84cc16', haloColor: 'rgba(132, 204, 22, 0.75)', particleColor: '#a3e635', score: 20, xRatio: 0.88, y: 145 },
     ];
 
     this.fruits = configs.map((cfg) => {
@@ -111,35 +260,106 @@ export class SlingshotGame {
         respawnTimer: 0,
       };
     });
+
+    if (this.mode === 'HARVEST') {
+      for (const fruit of this.fruits) {
+        this.randomizeHarvestFruit(fruit);
+      }
+      this.ensureMinimumSeasonFruits({ flash: false });
+    }
+
+    this.initBeehives(width, height);
   }
 
-  // 跳過教學直接開玩
+  initBeehives(width, height) {
+    this.hives = [];
+    if (!this.hardMode) return;
+
+    const radius = Math.min(38, Math.max(26, width * 0.04));
+    const desiredCount = 1 + Math.floor(Math.random() * 2);
+    const candidates = [];
+    const xRatios = [0.16, 0.30, 0.70, 0.84];
+    const yRatios = [0.45, 0.55, 0.65];
+
+    for (const xRatio of xRatios) {
+      for (const yRatio of yRatios) {
+        const hive = { x: width * xRatio, y: height * yRatio, radius };
+        const overlapsFruit = this.fruits.some((fruit) => (
+          Math.hypot(hive.x - fruit.x, hive.y - fruit.y) < hive.radius + fruit.radius + 14
+        ));
+        if (!overlapsFruit) candidates.push(hive);
+      }
+    }
+
+    for (let i = candidates.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [candidates[i], candidates[j]] = [candidates[j], candidates[i]];
+    }
+
+    for (const candidate of candidates) {
+      const overlapsHive = this.hives.some((hive) => (
+        Math.hypot(candidate.x - hive.x, candidate.y - hive.y) < candidate.radius + hive.radius + 14
+      ));
+      if (overlapsHive) continue;
+      this.hives.push({ ...candidate, id: `hive-${this.hives.length}` });
+      if (this.hives.length >= desiredCount) break;
+    }
+
+    // 極小視窗若沒有可用候選點，仍保證至少有一個蜂巢
+    if (this.hives.length === 0) {
+      this.hives.push({
+        id: 'hive-0', x: width * 0.15, y: height * 0.68, radius,
+      });
+    }
+  }
+
+  // 完成教學：經典模式直接開玩；採收模式先確認本回合規則
   skipTutorial() {
-    this.phase = 'PLAYING';
     this.timeLeft = 60;
-    this.lastTickTime = performance.now();
+    this.lastTickTime = 0;
+    this.harvestFeedbackUntil = 0;
+    this.harvestFeedbackText = '';
+    this.countdownStartedAt = 0;
+    this.countdownValue = '3';
     this.resetCharge();
     this.slingshotState = 'IDLE';
     this.lastUpdateTime = performance.now();
-    this.ensureTarget(); // 指定目標玩法：開局先指定一顆
+
+    if (this.mode === 'HARVEST') {
+      if (!this.harvestTargetType) this.chooseNextHarvestTarget();
+      this.phase = 'RULES';
+    } else {
+      this.phase = 'PLAYING';
+      this.lastTickTime = performance.now();
+    }
     sound.playClick();
   }
 
   // 重開一局
   restart(width, height) {
-    this.phase = 'PLAYING';
     this.timeLeft = 60;
     this.score = 0;
     this.fruitsHit = 0;
     this.projectiles = [];
     this.popups = [];
-    this.lastTickTime = performance.now();
+    this.harvestFeedbackUntil = 0;
+    this.harvestFeedbackText = '';
+    this.countdownStartedAt = 0;
+    this.countdownValue = '3';
     this.resetCharge();
     this.slingshotState = 'IDLE';
     this.lastUpdateTime = performance.now();
-    this.initFruits(width, height);
-    this.assignedTargetId = null; // 指定目標玩法：重開局重新指定
-    this.ensureTarget();
+
+    if (this.mode === 'HARVEST') {
+      this.phase = 'RULES';
+      this.lastTickTime = 0;
+      this.chooseNextHarvestTarget();
+      this.initFruits(width, height);
+    } else {
+      this.phase = 'PLAYING';
+      this.lastTickTime = performance.now();
+      this.initFruits(width, height);
+    }
     sound.playClick();
   }
 
@@ -269,30 +489,27 @@ export class SlingshotGame {
       handsData = this.lastHandsData;
     }
 
-    // 處理計時邏輯 (僅在 PLAYING 階段)
-    if (this.phase === 'PLAYING') {
+    // 倒數進行時不計 60 秒；只有 PLAYING 才執行挑戰計時
+    if (this.phase === 'COUNTDOWN') {
+      this.handleStartCountdown();
+    } else if (this.phase === 'PLAYING') {
       this.handleCountdown();
-      // 指定目標玩法：確認目標還掛著，被打掉就自動換下一顆
-      this.ensureTarget();
     }
 
     // 處理手勢互動
     this.handleSlingshotLogic(handsData, width, height);
 
-    // 繪製背景元素
-    renderer.drawTreeCanopy(width, height);
-
-    // 更新並繪製水果
+    // 更新並繪製水果與困難版蜂巢
     this.updateAndDrawFruits(renderer, width, height);
-
-    // 指定目標玩法：頂端橫幅「打這顆！」（僅正式遊戲顯示）
-    if (this.phase === 'PLAYING' && this.assignedTargetId != null) {
-      const assigned = this.fruits.find((f) => f.id === this.assignedTargetId);
-      renderer.drawTargetBanner(assigned);
-    }
+    this.updateAndDrawBeehives(renderer);
 
     // 更新並繪製飛行彈丸
     this.updateAndDrawProjectiles(renderer, width, height);
+
+    // 採收模式錯誤提示
+    if (this.mode === 'HARVEST' && now < this.harvestFeedbackUntil) {
+      renderer.drawHarvestFeedback(this.harvestFeedbackText, width, height);
+    }
 
     // 繪製彈弓與雙手
     const isPulling = this.slingshotState === 'PULLING';
@@ -325,7 +542,7 @@ export class SlingshotGame {
     renderer.drawScorePopups(this.popups);
 
     // 繪製左下角立式木牌 (在正式遊戲或時間結束時顯示)
-    if (this.phase === 'PLAYING' || this.phase === 'FINISHED') {
+    if (this.phase === 'PLAYING' || this.phase === 'READY' || this.phase === 'FINISHED') {
       renderer.drawBottomLeftSignpost(
         24,
         height - 70,
@@ -377,11 +594,25 @@ export class SlingshotGame {
     this.lastUpdateTime = now;
     const restingY = this.anchor.y - 58;
 
+    // 規則卡或 3-2-1-GO 倒數期間封鎖手勢，避免提前拉弓
+    if (this.phase === 'RULES' || this.phase === 'COUNTDOWN') {
+      this.slingshotState = 'IDLE';
+      this.resetCharge();
+      this.pouch.x = this.anchor.x;
+      this.pouch.y = restingY;
+      this.handsOpen = false;
+      return;
+    }
+
     // 手不在畫面：取消蓄力、歸位（不再誤射）
     if (!handsData) {
       if (this.slingshotState === 'PULLING') {
         this.resetCharge();
         this.slingshotState = 'IDLE';
+        if (this.phase === 'CALIBRATION' && this.tutorialStep >= 2) {
+          this.tutorialStep = 1;
+          this.tutorialStartY = null;
+        }
       }
       this.pouch.x = this.anchor.x;
       this.pouch.y = restingY;
@@ -415,26 +646,23 @@ export class SlingshotGame {
     const handsTogetherStable = this.togetherStreak >= 3;
     const pullReadyStable = this.pullStreak >= 4;
 
-    // ===== 動作校準教學流程檢測 =====
+    // ===== 動作校準教學流程檢測（教學放寬：不要求手越過肩線） =====
     if (this.phase === 'CALIBRATION') {
-      if (this.tutorialStep === 1 && handsTogetherStable && aboveShoulder) {
+      if (this.tutorialStep === 1 && handsTogetherStable) {
         this.tutorialStep = 2;
+        this.tutorialStartY = midY;
         sound.playCheck();
-      } else if (this.tutorialStep === 2 && pullDelta > 60) {
-        // 從肩線以上拉到肩線以下 60px → 明確的下拉動作
+      } else if (
+        this.tutorialStep === 2 &&
+        this.tutorialStartY != null &&
+        midY - this.tutorialStartY > 30
+      ) {
+        // 從併攏起始位置向下移動約 30px，即視為完成拉弓動作
         this.tutorialStep = 3;
         this.slingshotState = 'PULLING';
         this.resetCharge();
         this.lastChargeSecond = Math.ceil(this.CHARGE_REQUIRED_MS / 1000);
         sound.playCheck();
-      } else if (this.tutorialStep === 3) {
-        if (pullDelta <= 30) {
-          // 姿勢跑掉：取消拉弓，蓄力歸零重來
-          this.slingshotState = 'READY';
-          this.resetCharge();
-          this.lastChargeSecond = Math.ceil(this.CHARGE_REQUIRED_MS / 1000);
-        }
-        // 蓄力與自動發射由下方 PULLING 分支統一處理
       }
     }
 
@@ -476,13 +704,33 @@ export class SlingshotGame {
           this.pouch.y = restingY;
           this.resetCharge();
           this.outZoneAt = 0;
+          if (this.phase === 'CALIBRATION' && this.tutorialStep === 3) {
+            this.tutorialStep = 1;
+            this.tutorialStartY = null;
+          }
           return;
         }
       } else {
         this.outZoneAt = 0;
       }
-      // 拉回肩線上方（20px 內）→ 回到 READY，蓄力歸零（放寬：只回到 45 門檻之上就保留）
-      if (pullDelta < 25) {
+      const isTutorialPull = this.phase === 'CALIBRATION' && this.tutorialStep === 3;
+      const tutorialPullDelta = isTutorialPull && this.tutorialStartY != null
+        ? midY - this.tutorialStartY
+        : 0;
+
+      // 正式遊戲仍用肩線判定取消；教學改用自身下拉幅度，不要求越過肩線
+      if (isTutorialPull) {
+        if (tutorialPullDelta < 20) {
+          this.slingshotState = 'READY';
+          this.tutorialStep = 2;
+          this.tutorialStartY = midY;
+          this.pouch.x = this.anchor.x;
+          this.pouch.y = restingY;
+          this.resetCharge();
+          this.lastChargeSecond = Math.ceil(this.CHARGE_REQUIRED_MS / 1000);
+          return;
+        }
+      } else if (pullDelta < 25) {
         this.slingshotState = 'READY';
         this.pouch.x = this.anchor.x;
         this.pouch.y = restingY;
@@ -491,7 +739,8 @@ export class SlingshotGame {
       }
 
       const maxPullY = height * 0.22;
-      const clampedDeltaY = Math.min(maxPullY, pullDelta);
+      const pullDistance = isTutorialPull ? Math.max(0, tutorialPullDelta) : pullDelta;
+      const clampedDeltaY = Math.min(maxPullY, pullDistance);
       const deltaX = midX - this.anchor.x;
 
       this.pouch.x = this.anchor.x + deltaX * 0.75;
@@ -525,7 +774,7 @@ export class SlingshotGame {
       }
 
       // ===== 步驟 3：維持姿勢 3 秒 → 自動發射 =====
-      if (this.phase === 'PLAYING' || this.phase === 'CALIBRATION') {
+      if (this.phase === 'PLAYING' || this.phase === 'CALIBRATION' || this.phase === 'READY') {
         this.chargeMs += dt;
         const secLeft = Math.ceil((this.CHARGE_REQUIRED_MS - this.chargeMs) / 1000);
         if (secLeft < this.lastChargeSecond && secLeft > 0) {
@@ -549,8 +798,13 @@ export class SlingshotGame {
     }
   }
 
-  // 射出彈丸
+  // 射出彈丸；採收模式在 READY 階段的第一發正式開始倒數
   fireProjectile() {
+    if (this.mode === 'HARVEST' && this.phase === 'READY') {
+      this.phase = 'PLAYING';
+      this.timeLeft = 60;
+      this.lastTickTime = performance.now();
+    }
     this.slingshotState = 'IDLE';
     sound.playShoot();
 
@@ -581,7 +835,8 @@ export class SlingshotGame {
 
     for (const fruit of this.fruits) {
       const isTargeted = this.slingshotState === 'PULLING' && this.targetedFruitId === fruit.id;
-      const isAssigned = this.phase === 'PLAYING' && this.assignedTargetId === fruit.id;
+      const isAssigned = this.mode === 'CLASSIC' && this.phase === 'PLAYING' && this.assignedTargetId === fruit.id;
+      const isSeasonRevealed = this.mode === 'HARVEST' && now < (fruit.seasonRevealUntil || 0);
 
       // 打錯水果的抖動（限時，往復偏移，只影響繪圖不影響碰撞位置）
       if (fruit.shakeUntil && fruit.state === 'HANGING') {
@@ -594,7 +849,7 @@ export class SlingshotGame {
       }
 
       if (fruit.state === 'HANGING') {
-        renderer.drawFruit(fruit, isTargeted, isAssigned, fruit.shakeOffsetX || 0);
+        renderer.drawFruit(fruit, isTargeted, isAssigned, fruit.shakeOffsetX || 0, isSeasonRevealed);
       } else if (fruit.state === 'FALLING') {
         fruit.y += fruit.vy;
         fruit.x += fruit.vx;
@@ -615,12 +870,22 @@ export class SlingshotGame {
           fruit.vy = 0;
           fruit.vx = 0;
           fruit.rotation = 0;
+          if (this.mode === 'HARVEST') {
+            // 採收模式：同一個樹枝位置長出隨機種類的新水果，再檢查當季數量下限
+            this.randomizeHarvestFruit(fruit);
+            this.ensureMinimumSeasonFruits({ flash: true });
+          }
           sound.playFruitRespawn();
           renderer.addJuiceParticles(fruit.x, fruit.y, fruit.particleColor, 10);
           renderer.drawFruit(fruit, false);
         }
       }
     }
+  }
+
+  updateAndDrawBeehives(renderer) {
+    if (!this.hardMode) return;
+    for (const hive of this.hives) renderer.drawBeehive(hive);
   }
 
   updateAndDrawProjectiles(renderer, width, height) {
@@ -638,55 +903,77 @@ export class SlingshotGame {
 
       renderer.drawProjectile(proj);
 
+      // 教學/規則確認畫面中的彈丸只作動畫，不參與計分或碰撞
+      if (this.phase !== 'PLAYING') {
+        if (proj.framesLeft <= 0 || proj.y < -30 || proj.x < -30 || proj.x > width + 30) {
+          this.projectiles.splice(i, 1);
+        }
+        continue;
+      }
+
       let hit = false;
-      for (const fruit of this.fruits) {
+      if (this.hardMode) {
+        for (const hive of this.hives) {
+          const hiveDist = Math.hypot(proj.x - hive.x, proj.y - hive.y);
+          if (hiveDist > hive.radius + proj.radius + 12) continue;
+
+          this.score = Math.max(0, this.score - 5);
+          this.popups.push({
+            x: hive.x,
+            y: hive.y - hive.radius - 8,
+            vy: -1.7,
+            alpha: 1,
+            text: '蜂巢！-5分',
+            color: '#fde68a',
+          });
+          sound.playWrongHit();
+          hit = true;
+          break;
+        }
+      }
+
+      if (!hit) for (const fruit of this.fruits) {
         if (fruit.state !== 'HANGING') continue;
 
         const dist = Math.hypot(proj.x - fruit.x, proj.y - fruit.y);
-        if (dist <= fruit.radius + proj.radius + 14) {
-          // 指定目標玩法：只有被指定的水果能被打下來
-          if (fruit.id !== this.assignedTargetId) {
-            // 打錯水果：彈丸被擋下、水果晃一下、「不是這顆 ❌」，不扣分不掉落
-            fruit.shakeUntil = now + 600;
-            sound.playWrongHit();
-            this.popups.push({
-              x: fruit.x,
-              y: fruit.y - 18,
-              vy: -1.4,
-              alpha: 1.2,
-              text: '不是這顆 ❌',
-              color: '#fca5a5',
-            });
-            hit = true;
-            break;
+        if (dist > fruit.radius + proj.radius + 14) continue;
+
+        const isHarvestMode = this.mode === 'HARVEST';
+        const isSeasonFruit = isHarvestMode && fruit.harvestType === this.harvestTargetType;
+
+        // 經典模式所有水果都可命中；採收模式同樣允許擊落所有水果
+        // 當季水果照原分數，非當季水果固定 5 分，經典模式固定 15 分
+        const points = this.mode === 'CLASSIC'
+          ? 15
+          : (isSeasonFruit ? fruit.score : 5);
+        hit = true;
+        fruit.state = 'FALLING';
+        fruit.vy = 1.2;
+        fruit.vx = (proj.vx * 0.3) + (Math.random() - 0.5) * 2;
+        fruit.angularVelocity = (Math.random() > 0.5 ? 1 : -1) * (0.07 + Math.random() * 0.09);
+
+        this.fruitsHit += 1;
+        this.score += points;
+
+        sound.playFruitHit();
+        renderer.addJuiceParticles(fruit.x, fruit.y, fruit.particleColor, 26);
+        this.popups.push({
+          x: fruit.x,
+          y: fruit.y - 12,
+          vy: -1.7,
+          alpha: 1,
+          text: `+${points} ${fruit.icon}`,
+          color: fruit.particleColor,
+        });
+
+        if (isHarvestMode) {
+          if (!isSeasonFruit) {
+            this.harvestFeedbackText = '不是當季水果！+5分';
+            this.harvestFeedbackUntil = now + 1600;
           }
-
-          hit = true;
-          fruit.state = 'FALLING';
-          fruit.vy = 1.2;
-          fruit.vx = (proj.vx * 0.3) + (Math.random() - 0.5) * 2;
-          fruit.angularVelocity = (Math.random() > 0.5 ? 1 : -1) * (0.07 + Math.random() * 0.09);
-
-          this.fruitsHit += 1;
-          this.score += fruit.score;
-
-          sound.playFruitHit();
-          renderer.addJuiceParticles(fruit.x, fruit.y, fruit.particleColor, 26);
-
-          this.popups.push({
-            x: fruit.x,
-            y: fruit.y - 12,
-            vy: -1.7,
-            alpha: 1,
-            text: `+${fruit.score} ${fruit.icon}`,
-            color: fruit.particleColor,
-          });
-
-          // 打中目標 → 立刻指定下一顆（不等重生）
-          this.assignedTargetId = null;
-          this.ensureTarget();
-          break;
+          this.ensureMinimumSeasonFruits({ flash: true });
         }
+        break;
       }
 
       if (hit || proj.framesLeft <= 0 || proj.y < -30 || proj.x < -30 || proj.x > width + 30) {
