@@ -458,6 +458,66 @@ button:disabled {
   display: none;
 }
 
+.play-area.hard-harvest-mode .harvest-rules-card {
+  padding: 12px 18px;
+}
+
+.play-area.hard-harvest-mode .rules-eyebrow {
+  font-size: 16px;
+  line-height: 1.1;
+}
+
+.play-area.hard-harvest-mode .rules-fruit-image {
+  width: 80px;
+  height: 80px;
+  margin: 0 auto;
+}
+
+.play-area.hard-harvest-mode .harvest-rules-card h2 {
+  margin-bottom: 2px;
+  font-size: clamp(22px, 4vw, 28px);
+  line-height: 1.1;
+}
+
+.play-area.hard-harvest-mode .rules-main {
+  font-size: 18px;
+  line-height: 1.15;
+}
+
+.play-area.hard-harvest-mode .rules-wrong {
+  margin-top: 4px;
+  font-size: 14px;
+  line-height: 1.2;
+}
+
+.play-area.hard-harvest-mode .rules-wrong strong {
+  font-size: 15px;
+}
+
+.play-area.hard-harvest-mode .rules-hive {
+  margin-top: 4px;
+  padding: 5px 8px;
+  font-size: 14px;
+  line-height: 1.2;
+}
+
+.play-area.hard-harvest-mode .rules-gesture {
+  margin-top: 5px;
+  font-size: 14px;
+  line-height: 1.2;
+}
+
+.play-area.hard-harvest-mode .rules-start-hint {
+  margin-top: 3px;
+  font-size: 13px;
+  line-height: 1.15;
+}
+
+.play-area.hard-harvest-mode .harvest-rules-card button {
+  min-height: 42px;
+  margin-top: 8px;
+}
+
 .rules-gesture {
   margin-top: 10px;
   color: #451a03;

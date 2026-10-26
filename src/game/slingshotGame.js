@@ -8,6 +8,10 @@ const HARVEST_TYPES = [
   { id: 'green-apple', name: '青蘋果', icon: '🍏', assetKey: 'fruit-green-apple.png', score: 20, color: '#84cc16', haloColor: 'rgba(132, 204, 22, 0.75)', particleColor: '#a3e635' },
 ];
 
+const HIVE_AUTO_DROP_MS = 15_000;
+const HIVE_RESPAWN_CHANCE = 0.20;
+const MAX_SIMULTANEOUS_HIVES = 2;
+
 export class SlingshotGame {
   constructor() {
     this.phase = 'CALIBRATION'; // 'CALIBRATION' | 'COUNTDOWN' | 'PLAYING' | 'FINISHED'
@@ -258,6 +262,7 @@ export class SlingshotGame {
         rotation: 0,
         scale: 1,
         respawnTimer: 0,
+        respawnCanBecomeHive: false,
       };
     });
 
@@ -271,14 +276,58 @@ export class SlingshotGame {
     this.initBeehives(width, height);
   }
 
+  hiveRadiusForFruit(fruit) {
+    return Math.max(20, fruit.radius * 0.92);
+  }
+
+  canPlaceHiveAtFruitSlot(slot, { checkFruitOverlap = true } = {}) {
+    if (!slot || this.hives.length >= MAX_SIMULTANEOUS_HIVES) return false;
+    const x = slot.originX ?? slot.x;
+    const y = slot.originY ?? slot.y;
+    const radius = this.hiveRadiusForFruit(slot);
+
+    if (checkFruitOverlap && this.fruits.some((fruit) => (
+      fruit.id !== slot.id
+      && fruit.state === 'HANGING'
+      && Math.hypot(x - fruit.originX, y - fruit.originY) < radius + fruit.radius + 8
+    ))) return false;
+
+    return !this.hives.some((hive) => (
+      Math.hypot(x - hive.x, y - hive.y) < radius + hive.radius + 8
+    ));
+  }
+
+  createHiveFromFruitSlot(fruit) {
+    if (this.hives.length >= MAX_SIMULTANEOUS_HIVES) return null;
+    const hive = {
+      id: `hive-${this.hives.length}`,
+      fruitSlotId: fruit.id,
+      originX: fruit.originX,
+      originY: fruit.originY,
+      x: fruit.originX,
+      y: fruit.originY,
+      radius: this.hiveRadiusForFruit(fruit),
+      state: 'HANGING',
+      vx: 0,
+      vy: 0,
+      rotation: 0,
+      angularVelocity: 0,
+      autoDropAt: 0,
+    };
+    fruit.state = 'HIVE';
+    fruit.vx = 0;
+    fruit.vy = 0;
+    fruit.respawnCanBecomeHive = false;
+    this.hives.push(hive);
+    this.ensureMinimumSeasonFruits({ flash: false });
+    return hive;
+  }
+
   initBeehives() {
     this.hives = [];
     if (!this.hardMode) return;
 
     const desiredCount = 1 + Math.floor(Math.random() * 2);
-    let seasonCount = this.fruits.filter(
-      (fruit) => fruit.state === 'HANGING' && fruit.harvestType === this.harvestTargetType,
-    ).length;
     const candidates = this.fruits.filter((fruit) => fruit.state === 'HANGING');
     for (let i = candidates.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
@@ -287,52 +336,20 @@ export class SlingshotGame {
 
     const canReplaceSlot = (fruit) => (
       fruit.state === 'HANGING'
-      && (fruit.harvestType !== this.harvestTargetType || seasonCount > 3)
+      && (fruit.harvestType !== this.harvestTargetType
+        || this.fruits.filter((slot) => slot.state === 'HANGING' && slot.harvestType === this.harvestTargetType).length > 3)
     );
-    const overlapsFruit = (slot, radius) => this.fruits.some((fruit) => (
-      fruit.id !== slot.id
-      && fruit.state === 'HANGING'
-      && Math.hypot(slot.originX - fruit.x, slot.originY - fruit.y) < radius + fruit.radius + 8
-    ));
-    const overlapsHive = (slot, radius) => this.hives.some((hive) => (
-      Math.hypot(slot.originX - hive.x, slot.originY - hive.y) < radius + hive.radius + 8
-    ));
-    const replaceWithHive = (fruit) => {
-      const hive = {
-        id: `hive-${this.hives.length}`,
-        fruitSlotId: fruit.id,
-        originX: fruit.originX,
-        originY: fruit.originY,
-        x: fruit.originX,
-        y: fruit.originY,
-        radius: Math.max(20, fruit.radius * 0.92),
-        state: 'HANGING',
-        vx: 0,
-        vy: 0,
-        rotation: 0,
-        angularVelocity: 0,
-      };
-      fruit.state = 'HIVE';
-      fruit.vx = 0;
-      fruit.vy = 0;
-      if (fruit.harvestType === this.harvestTargetType) seasonCount -= 1;
-      this.hives.push(hive);
-    };
 
-    // 優先挑選不會遮住其他水果的原位置；小螢幕再放寬位置限制
+    // Prefer a slot with enough visual space, then fall back to any eligible original slot.
     for (const fruit of candidates) {
       if (this.hives.length >= desiredCount) break;
-      if (!canReplaceSlot(fruit)) continue;
-      const radius = Math.max(20, fruit.radius * 0.92);
-      if (overlapsFruit(fruit, radius) || overlapsHive(fruit, radius)) continue;
-      replaceWithHive(fruit);
+      if (!canReplaceSlot(fruit) || !this.canPlaceHiveAtFruitSlot(fruit)) continue;
+      this.createHiveFromFruitSlot(fruit);
     }
     for (const fruit of candidates) {
       if (this.hives.length >= desiredCount) break;
-      if (!canReplaceSlot(fruit)) continue;
-      const radius = Math.max(20, fruit.radius * 0.92);
-      if (overlapsHive(fruit, radius)) continue;
-      replaceWithHive(fruit);
+      if (!canReplaceSlot(fruit) || !this.canPlaceHiveAtFruitSlot(fruit, { checkFruitOverlap: false })) continue;
+      this.createHiveFromFruitSlot(fruit);
     }
   }
 
@@ -885,23 +902,37 @@ export class SlingshotGame {
         if (fruit.y > renderer.canvas.height + 60) {
           fruit.state = 'RESPAWNING';
           fruit.respawnTimer = now + 2500;
+          fruit.respawnCanBecomeHive = this.hardMode;
         }
       } else if (fruit.state === 'RESPAWNING') {
         if (now >= fruit.respawnTimer) {
-          fruit.state = 'HANGING';
-          fruit.x = fruit.originX;
-          fruit.y = fruit.originY;
-          fruit.vy = 0;
-          fruit.vx = 0;
-          fruit.rotation = 0;
-          if (this.mode === 'HARVEST') {
-            // 採收模式：同一個樹枝位置長出隨機種類的新水果，再檢查當季數量下限
-            this.randomizeHarvestFruit(fruit);
-            this.ensureMinimumSeasonFruits({ flash: true });
+          const becomesHive = this.hardMode
+            && fruit.respawnCanBecomeHive
+            && this.hives.length < MAX_SIMULTANEOUS_HIVES
+            && this.canPlaceHiveAtFruitSlot(fruit)
+            && Math.random() < HIVE_RESPAWN_CHANCE;
+
+          if (becomesHive) {
+            this.createHiveFromFruitSlot(fruit);
+            sound.playFruitRespawn();
+            renderer.addJuiceParticles(fruit.x, fruit.y, '#fbbf24', 10);
+          } else {
+            fruit.state = 'HANGING';
+            fruit.x = fruit.originX;
+            fruit.y = fruit.originY;
+            fruit.vy = 0;
+            fruit.vx = 0;
+            fruit.rotation = 0;
+            fruit.respawnCanBecomeHive = false;
+            if (this.mode === 'HARVEST') {
+              // 採收模式：同一個樹枝位置長出隨機種類的新水果，再檢查當季數量下限
+              this.randomizeHarvestFruit(fruit);
+              this.ensureMinimumSeasonFruits({ flash: true });
+            }
+            sound.playFruitRespawn();
+            renderer.addJuiceParticles(fruit.x, fruit.y, fruit.particleColor, 10);
+            renderer.drawFruit(fruit, false);
           }
-          sound.playFruitRespawn();
-          renderer.addJuiceParticles(fruit.x, fruit.y, fruit.particleColor, 10);
-          renderer.drawFruit(fruit, false);
         }
       }
     }
@@ -913,6 +944,22 @@ export class SlingshotGame {
 
     for (let i = this.hives.length - 1; i >= 0; i--) {
       const hive = this.hives[i];
+      if (hive.state === 'HANGING') {
+        if (this.phase === 'PLAYING' && !hive.autoDropAt) {
+          hive.autoDropAt = now + HIVE_AUTO_DROP_MS;
+        }
+        if (hive.autoDropAt && now >= hive.autoDropAt) {
+          hive.state = 'FALLING';
+          hive.vx = (Math.random() - 0.5) * 1.2;
+          hive.vy = 1.2;
+          hive.angularVelocity = (Math.random() > 0.5 ? 1 : -1) * 0.06;
+        }
+        if (hive.state === 'HANGING') {
+          renderer.drawBeehive(hive);
+          continue;
+        }
+      }
+
       if (hive.state === 'FALLING') {
         hive.x += hive.vx;
         hive.y += hive.vy;
@@ -925,6 +972,7 @@ export class SlingshotGame {
           if (fruit) {
             fruit.state = 'RESPAWNING';
             fruit.respawnTimer = now + 2500;
+            fruit.respawnCanBecomeHive = false;
             fruit.x = fruit.originX;
             fruit.y = fruit.originY;
             fruit.vx = 0;
@@ -933,8 +981,6 @@ export class SlingshotGame {
           }
           this.hives.splice(i, 1);
         }
-      } else if (hive.state === 'HANGING') {
-        renderer.drawBeehive(hive);
       }
     }
   }
