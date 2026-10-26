@@ -349,7 +349,11 @@ export class GameRenderer {
       const scale = Math.min(maxSize / image.naturalWidth, maxSize / image.naturalHeight);
       const drawWidth = image.naturalWidth * scale;
       const drawHeight = image.naturalHeight * scale;
-      this.ctx.drawImage(image, hive.x - drawWidth / 2, hive.y - drawHeight / 2, drawWidth, drawHeight);
+      this.ctx.save();
+      this.ctx.translate(hive.x, hive.y);
+      this.ctx.rotate(hive.rotation || 0);
+      this.ctx.drawImage(image, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
+      this.ctx.restore();
       return;
     }
     this.drawBeehiveFallback(hive);
@@ -360,6 +364,7 @@ export class GameRenderer {
     const r = hive.radius;
     ctx.save();
     ctx.translate(hive.x, hive.y);
+    ctx.rotate(hive.rotation || 0);
 
     // 懸掛枝梗
     ctx.beginPath();
