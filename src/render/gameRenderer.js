@@ -26,6 +26,7 @@ export class GameRenderer {
   async loadArtAssets() {
     const filenames = [
       'orchard-background-muted.jpg',
+      'beehive.png',
       'fruit-red-apple.png',
       'fruit-orange.png',
       'fruit-peach.png',
@@ -342,6 +343,19 @@ export class GameRenderer {
   }
 
   drawBeehive(hive) {
+    const image = this.artImages['beehive.png'];
+    if (image?.complete && image.naturalWidth > 0) {
+      const maxSize = hive.radius * 2.15;
+      const scale = Math.min(maxSize / image.naturalWidth, maxSize / image.naturalHeight);
+      const drawWidth = image.naturalWidth * scale;
+      const drawHeight = image.naturalHeight * scale;
+      this.ctx.drawImage(image, hive.x - drawWidth / 2, hive.y - drawHeight / 2, drawWidth, drawHeight);
+      return;
+    }
+    this.drawBeehiveFallback(hive);
+  }
+
+  drawBeehiveFallback(hive) {
     const ctx = this.ctx;
     const r = hive.radius;
     ctx.save();

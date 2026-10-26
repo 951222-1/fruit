@@ -82,7 +82,7 @@ npm run dev          # http://127.0.0.1:5175
 ├── package.json                 # 專案配置(dev port 5175)
 ├── README.md                    # 本文件(說明 + 開發記錄)
 ├── public/
-│   ├── art/                     # 柔化全畫面樹林背景、果園框與5種透明水果插圖
+│   ├── art/                     # 樹林背景、果園框、5種水果插圖與手繪蜂巢圖
 │   ├── models/                  # 本地 MediaPipe 模型(pose_lite 5.8MB / hand 7.8MB)
 │   └── wasm/                    # 本地 WASM 引擎 ×6(免連 CDN)
 └── src/
