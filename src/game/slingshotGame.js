@@ -9,7 +9,7 @@ const HARVEST_TYPES = [
 ];
 
 const HIVE_AUTO_DROP_MS = 15_000;
-const HIVE_RESPAWN_CHANCE = 0.20;
+const HIVE_RESPAWN_CHANCE = 0.30;
 const MAX_SIMULTANEOUS_HIVES = 2;
 
 export class SlingshotGame {

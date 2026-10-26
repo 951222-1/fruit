@@ -47,7 +47,7 @@ app.innerHTML = `
               </button>
               <button class="mode-card" type="button" data-mode="HARVEST_HARD" aria-pressed="false">
                 <strong>🐝 水果採集困難版</strong>
-                <span>1–2個原水果位換蜂巢；射中扣5分，15秒未擊落自動掉落；水果重生20%機率變蜂巢（最多2個）。</span>
+                <span>1–2個原水果位換蜂巢；射中扣5分，15秒未擊落自動掉落；水果重生30%機率變蜂巢（最多2個）。</span>
               </button>
             </div>
             <button class="primary" id="emptyStartBtn" style="margin-top: 16px; padding: 12px 24px; font-size: 16px;">啟動 Webcam 🎥</button>
@@ -60,7 +60,7 @@ app.innerHTML = `
               <h2 id="rulesFruitName">紅蘋果</h2>
               <p class="rules-main">當季水果照原分數採收！</p>
               <p class="rules-wrong">其他水果也能打落：<strong>不是當季水果！+5分</strong></p>
-              <p class="rules-hive" id="hardHarvestRule" hidden>困難版：射中蜂巢扣5分。計時開始後，15秒沒打落會自動掉；水果重生20%機率變蜂巢（最多同時2個）。蜂巢掉落後2.5秒原位長回隨機水果；最低0分。</p>
+              <p class="rules-hive" id="hardHarvestRule" hidden>困難版：射中蜂巢扣5分。計時開始後，15秒沒打落會自動掉；水果重生30%機率變蜂巢（最多同時2個）。蜂巢掉落後2.5秒原位長回隨機水果；最低0分。</p>
               <p class="rules-gesture">雙手併攏抬高過肩，像拉彈弓一樣往下拉；續力 3 秒射出第一發。</p>
               <p class="rules-start-hint">確認後，第一發射出才開始 60 秒挑戰。</p>
               <button class="primary" id="confirmHarvestRulesBtn" type="button">我知道了，準備開始</button>
@@ -185,7 +185,7 @@ function selectMode(mode) {
 
   modeTipTitle.textContent = isHardHarvest ? '🐝 水果採集困難版' : (isHarvest ? '🍎 當季水果採收' : '🎯 經典彈弓');
   modeTipText.textContent = isHardHarvest
-    ? '蜂巢命中扣5分，15秒未擊落會掉落；水果重生20%機率變蜂巢（最多2個）。'
+    ? '蜂巢命中扣5分，15秒未擊落會掉落；水果重生30%機率變蜂巢（最多2個）。'
     : (isHarvest
       ? '牌子上的水果照原分數；其他水果也能打落，固定 +5 分。'
       : '想射哪種就射哪種；每顆水果命中固定 +15 分。');
