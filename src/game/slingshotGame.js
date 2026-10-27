@@ -53,6 +53,8 @@ export class SlingshotGame {
     this.togetherStreak = 0;
     this.pullStreak = 0;
     this.outZoneAt = 0;
+    this.stageWidth = 0;
+    this.stageHeight = 0;
 
     this.fruits = [];
     this.hives = [];
@@ -219,6 +221,8 @@ export class SlingshotGame {
       this.chooseNextHarvestTarget();
     }
     this.initFruits(width, height);
+    this.stageWidth = width;
+    this.stageHeight = height;
     this.updateAnchor(width, height);
   }
 
@@ -229,6 +233,71 @@ export class SlingshotGame {
       this.pouch.x = this.anchor.x;
       this.pouch.y = this.anchor.y - 58;
     }
+  }
+
+  resize(width, height) {
+    if (!(width > 0 && height > 0)) return;
+    if (!(this.stageWidth > 0 && this.stageHeight > 0)) {
+      this.stageWidth = width;
+      this.stageHeight = height;
+      this.updateAnchor(width, height);
+      return;
+    }
+
+    const scaleX = width / this.stageWidth;
+    const scaleY = height / this.stageHeight;
+    const scaleRadius = Math.sqrt(scaleX * scaleY);
+    const scalePoint = (point) => {
+      if (!point) return;
+      if (Number.isFinite(point.x)) point.x *= scaleX;
+      if (Number.isFinite(point.y)) point.y *= scaleY;
+    };
+    const scaleEntity = (entity) => {
+      if (!entity) return;
+      scalePoint(entity);
+      if (Number.isFinite(entity.originX)) entity.originX *= scaleX;
+      if (Number.isFinite(entity.originY)) entity.originY *= scaleY;
+      if (Number.isFinite(entity.vx)) entity.vx *= scaleX;
+      if (Number.isFinite(entity.vy)) entity.vy *= scaleY;
+      if (Number.isFinite(entity.radius)) entity.radius *= scaleRadius;
+    };
+
+    this.fruits.forEach(scaleEntity);
+    this.hives.forEach(scaleEntity);
+    this.projectiles.forEach((projectile) => {
+      scaleEntity(projectile);
+      projectile.trail?.forEach(scalePoint);
+    });
+    this.popups.forEach((popup) => {
+      scalePoint(popup);
+      if (Number.isFinite(popup.vy)) popup.vy *= scaleY;
+    });
+    scalePoint(this.anchor);
+    scalePoint(this.pouch);
+    scalePoint(this.target);
+
+    if (Number.isFinite(this.smoothMidX)) this.smoothMidX *= scaleX;
+    if (Number.isFinite(this.smoothMidY)) this.smoothMidY *= scaleY;
+    if (Number.isFinite(this.smoothDist)) this.smoothDist *= scaleRadius;
+    if (Number.isFinite(this.shoulderYSmooth)) this.shoulderYSmooth *= scaleY;
+    if (this.lastHandsData) {
+      scalePoint(this.lastHandsData.leftPos);
+      scalePoint(this.lastHandsData.rightPos);
+      if (Number.isFinite(this.lastHandsData.midX)) this.lastHandsData.midX *= scaleX;
+      if (Number.isFinite(this.lastHandsData.midY)) this.lastHandsData.midY *= scaleY;
+      if (Number.isFinite(this.lastHandsData.dist)) this.lastHandsData.dist *= scaleRadius;
+      if (this.lastHandsData.shoulders) {
+        scalePoint(this.lastHandsData.shoulders.left);
+        scalePoint(this.lastHandsData.shoulders.right);
+        if (Number.isFinite(this.lastHandsData.shoulders.midX)) this.lastHandsData.shoulders.midX *= scaleX;
+        if (Number.isFinite(this.lastHandsData.shoulders.midY)) this.lastHandsData.shoulders.midY *= scaleY;
+        if (Number.isFinite(this.lastHandsData.shoulders.span)) this.lastHandsData.shoulders.span *= scaleRadius;
+      }
+    }
+
+    this.stageWidth = width;
+    this.stageHeight = height;
+    this.updateAnchor(width, height);
   }
 
   // 頂部 7 顆豐富水果佈局（橫跨整片頂部樹梢）
@@ -425,6 +494,9 @@ export class SlingshotGame {
       this.lastTickTime = performance.now();
       this.initFruits(width, height);
     }
+    this.stageWidth = width;
+    this.stageHeight = height;
+    this.updateAnchor(width, height);
     sound.playClick();
   }
 

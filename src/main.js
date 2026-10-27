@@ -29,6 +29,7 @@ app.innerHTML = `
           <!-- 畫面內部浮動按鈕 -->
           <div class="overlay-controls">
             <button class="glass-btn" id="skipTutorialBtn" style="display: none;">跳過教學 ⏩</button>
+            <button class="glass-btn" id="fullscreenToggle" type="button" aria-label="切換滿版" aria-pressed="false" title="按 Esc 可退出滿版">⛶ 滿版</button>
             <button class="glass-btn" id="helpBtn">？動作教學</button>
           </div>
 
@@ -148,6 +149,7 @@ const restartButton = document.querySelector('#restartButton');
 const soundToggle = document.querySelector('#soundToggle');
 const skipTutorialBtn = document.querySelector('#skipTutorialBtn');
 const helpBtn = document.querySelector('#helpBtn');
+const fullscreenToggle = document.querySelector('#fullscreenToggle');
 const statusEl = document.querySelector('#status');
 const statusDot = document.querySelector('#statusDot');
 const fpsEl = document.querySelector('#fps');
@@ -164,6 +166,44 @@ let running = false;
 let lastVideoTime = -1;
 let frameCount = 0;
 let lastFpsUpdate = performance.now();
+
+function getFullscreenElement() {
+  return document.fullscreenElement || document.webkitFullscreenElement || null;
+}
+
+function updateFullscreenButton() {
+  const isFullscreen = getFullscreenElement() === playArea;
+  fullscreenToggle.textContent = isFullscreen ? '⛶ 退出滿版' : '⛶ 滿版';
+  fullscreenToggle.setAttribute('aria-pressed', String(isFullscreen));
+  fullscreenToggle.setAttribute('aria-label', isFullscreen ? '退出滿版' : '切換滿版');
+  fullscreenToggle.title = isFullscreen ? '按 Esc 或此按鈕退出滿版' : '按 Esc 可退出滿版';
+}
+
+function resizeGameStage() {
+  if (!running) return;
+  renderer.resize(stage);
+  game.resize(stage.clientWidth, stage.clientHeight);
+}
+
+async function toggleFullscreen() {
+  try {
+    if (getFullscreenElement() === playArea) {
+      if (document.exitFullscreen) await document.exitFullscreen();
+      else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+      else throw new Error('此瀏覽器無法退出滿版模式');
+    } else if (playArea.requestFullscreen) {
+      await playArea.requestFullscreen();
+    } else if (playArea.webkitRequestFullscreen) {
+      playArea.webkitRequestFullscreen();
+    } else {
+      throw new Error('此瀏覽器不支援滿版模式');
+    }
+    sound.playClick();
+  } catch (error) {
+    console.warn('滿版切換失敗:', error);
+    fullscreenToggle.title = '無法切換滿版，請確認瀏覽器支援';
+  }
+}
 
 function selectMode(mode) {
   selectedMode = mode;
@@ -238,6 +278,14 @@ soundToggle.addEventListener('click', () => {
   soundToggle.textContent = sound.enabled ? '🔊 音效' : '🔇 靜音';
   sound.playClick();
 });
+
+fullscreenToggle.addEventListener('click', toggleFullscreen);
+const handleFullscreenChange = () => {
+  updateFullscreenButton();
+  requestAnimationFrame(resizeGameStage);
+};
+document.addEventListener('fullscreenchange', handleFullscreenChange);
+document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
 
 // 跳過教學
 skipTutorialBtn.addEventListener('click', () => {
@@ -409,9 +457,4 @@ restartButton.addEventListener('click', () => {
   game.restart(stage.clientWidth, stage.clientHeight);
 });
 
-window.addEventListener('resize', () => {
-  if (running) {
-    renderer.resize(stage);
-    game.updateAnchor(stage.clientWidth, stage.clientHeight);
-  }
-});
+window.addEventListener('resize', resizeGameStage);
