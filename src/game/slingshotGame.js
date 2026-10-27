@@ -66,8 +66,6 @@ export class SlingshotGame {
     this.assignedTargetId = null;
     this.harvestTargetType = null;
     this.previousHarvestTargetType = null;
-    this.harvestFeedbackUntil = 0;
-    this.harvestFeedbackText = '';
     this.countdownStartedAt = 0;
     this.countdownValue = '3';
   }
@@ -79,8 +77,6 @@ export class SlingshotGame {
     this.assignedTargetId = null;
     this.harvestTargetType = null;
     this.previousHarvestTargetType = null;
-    this.harvestFeedbackUntil = 0;
-    this.harvestFeedbackText = '';
     this.countdownStartedAt = 0;
     this.countdownValue = '3';
   }
@@ -318,6 +314,7 @@ export class SlingshotGame {
     fruit.state = 'HIVE';
     fruit.vx = 0;
     fruit.vy = 0;
+    fruit.respawnTimer = 0;
     fruit.respawnCanBecomeHive = false;
     this.hives.push(hive);
     this.ensureMinimumSeasonFruits({ flash: false });
@@ -352,6 +349,36 @@ export class SlingshotGame {
       if (!canReplaceSlot(fruit) || !this.canPlaceHiveAtFruitSlot(fruit, { checkFruitOverlap: false })) continue;
       this.createHiveFromFruitSlot(fruit);
     }
+    this.ensureMinimumHives();
+  }
+
+  ensureMinimumHives() {
+    if (!this.hardMode || this.hives.some((hive) => hive.state === 'HANGING')) return;
+    if (this.hives.length >= MAX_SIMULTANEOUS_HIVES) return;
+
+    const seasonalCount = this.fruits.filter((fruit) => (
+      fruit.state === 'HANGING' && fruit.harvestType === this.harvestTargetType
+    )).length;
+    const canReplaceSlot = (fruit) => (
+      fruit.harvestType !== this.harvestTargetType || seasonalCount > 3
+    );
+    const candidatePools = [
+      this.fruits.filter((fruit) => fruit.state === 'HANGING' && canReplaceSlot(fruit)),
+      // If no safe hanging slot is available, use a player-hit fruit slot eligible for hive respawn.
+      this.fruits.filter((fruit) => (
+        fruit.state === 'RESPAWNING'
+        && fruit.respawnCanBecomeHive
+        && canReplaceSlot(fruit)
+      )),
+    ];
+
+    for (const candidates of candidatePools) {
+      const slot = candidates.find((fruit) => this.canPlaceHiveAtFruitSlot(fruit))
+        || candidates.find((fruit) => this.canPlaceHiveAtFruitSlot(fruit, { checkFruitOverlap: false }));
+      if (!slot) continue;
+      this.createHiveFromFruitSlot(slot);
+      return;
+    }
   }
 
 
@@ -359,8 +386,6 @@ export class SlingshotGame {
   skipTutorial() {
     this.timeLeft = 60;
     this.lastTickTime = 0;
-    this.harvestFeedbackUntil = 0;
-    this.harvestFeedbackText = '';
     this.countdownStartedAt = 0;
     this.countdownValue = '3';
     this.resetCharge();
@@ -384,8 +409,6 @@ export class SlingshotGame {
     this.fruitsHit = 0;
     this.projectiles = [];
     this.popups = [];
-    this.harvestFeedbackUntil = 0;
-    this.harvestFeedbackText = '';
     this.countdownStartedAt = 0;
     this.countdownValue = '3';
     this.resetCharge();
@@ -559,11 +582,6 @@ export class SlingshotGame {
 
     // 更新並繪製飛行彈丸
     this.updateAndDrawProjectiles(renderer, width, height);
-
-    // 採收模式錯誤提示
-    if (this.mode === 'HARVEST' && now < this.harvestFeedbackUntil) {
-      renderer.drawHarvestFeedback(this.harvestFeedbackText, width, height);
-    }
 
     // 繪製彈弓與雙手
     const isPulling = this.slingshotState === 'PULLING';
@@ -996,6 +1014,8 @@ export class SlingshotGame {
         }
       }
     }
+
+    this.ensureMinimumHives();
   }
 
   updateAndDrawProjectiles(renderer, width, height) {
@@ -1072,20 +1092,17 @@ export class SlingshotGame {
 
         sound.playFruitHit();
         renderer.addJuiceParticles(fruit.x, fruit.y, fruit.particleColor, 26);
+        const isOffSeasonHit = isHarvestMode && !isSeasonFruit;
         this.popups.push({
           x: fruit.x,
           y: fruit.y - 12,
           vy: -1.7,
           alpha: 1,
-          text: `+${points} ${fruit.icon}`,
-          color: fruit.particleColor,
+          text: isOffSeasonHit ? '非當季！+5分' : `+${points} ${fruit.icon}`,
+          color: isOffSeasonHit ? '#fde68a' : fruit.particleColor,
         });
 
         if (isHarvestMode) {
-          if (!isSeasonFruit) {
-            this.harvestFeedbackText = '不是當季水果！+5分';
-            this.harvestFeedbackUntil = now + 1600;
-          }
           this.ensureMinimumSeasonFruits({ flash: true });
         }
         break;

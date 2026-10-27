@@ -535,33 +535,6 @@ export class GameRenderer {
     ctx.restore();
   }
 
-  // 採收模式非當季水果的輕量提示，不遮擋主要操作區
-  drawHarvestFeedback(text, width, height) {
-    const ctx = this.ctx;
-    ctx.save();
-    ctx.font = '600 21px system-ui, sans-serif';
-    const textW = ctx.measureText(text).width;
-    const bw = Math.min(width - 32, textW + 36);
-    const bh = 44;
-    const bx = (width - bw) / 2;
-    const by = Math.max(16, height * 0.36 - bh / 2);
-
-    ctx.beginPath();
-    ctx.roundRect ? ctx.roundRect(bx, by, bw, bh, 12) : ctx.rect(bx, by, bw, bh);
-    ctx.fillStyle = 'rgba(15, 23, 42, 0.68)';
-    ctx.fill();
-    ctx.lineWidth = 1.5;
-    ctx.strokeStyle = 'rgba(203, 213, 225, 0.58)';
-    ctx.stroke();
-
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillStyle = '#fef3c7';
-    ctx.font = '600 21px system-ui, sans-serif';
-    ctx.fillText(text, width / 2, by + bh / 2 + 1, bw - 18);
-    ctx.restore();
-  }
-
   // 繪製插在左下角的立式木牌 (Staked Signpost)
   drawBottomLeftSignpost(x, y, timeLeft, score, fruitsHit) {
     const ctx = this.ctx;
