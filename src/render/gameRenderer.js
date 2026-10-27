@@ -19,6 +19,9 @@ export class GameRenderer {
     this.lastMaskUpdateAt = 0;
     this.MASK_UPDATE_INTERVAL_MS = 66;
     this.MASK_GRACE_MS = 260;
+    this.lastPoseLandmarks = null;
+    this.lastPoseSeenAt = 0;
+    this.HAND_SKELETON_GRACE_MS = 600;
     this.artImages = {};
     this.assetsReady = this.loadArtAssets();
   }
@@ -184,10 +187,61 @@ export class GameRenderer {
     this.ctx.clearRect(0, 0, width, height);
   }
 
-  // 繪製微弱的輔助半透明骨架
+  resolveSkeletonLandmarks(landmarks, now = performance.now()) {
+    const armHandIndices = [11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22];
+    const bothWristsVisible = Boolean(
+      landmarks?.[15]
+      && landmarks?.[16]
+      && (landmarks[15].visibility ?? 0) >= 0.4
+      && (landmarks[16].visibility ?? 0) >= 0.4
+    );
+
+    if (landmarks && bothWristsVisible) {
+      this.lastPoseLandmarks = landmarks.map((point) => (point ? { ...point } : null));
+      this.lastPoseSeenAt = now;
+      return landmarks;
+    }
+
+    const cacheValid = this.lastPoseLandmarks
+      && now - this.lastPoseSeenAt <= this.HAND_SKELETON_GRACE_MS;
+    if (landmarks && cacheValid) {
+      const merged = landmarks.map((point) => (point ? { ...point } : null));
+      for (const index of armHandIndices) {
+        const current = merged[index];
+        const previous = this.lastPoseLandmarks[index];
+        if (previous && (!current || (current.visibility ?? 0) < 0.4)) {
+          merged[index] = { ...previous };
+        }
+      }
+      return merged;
+    }
+
+    if (!landmarks && cacheValid) {
+      const armsOnly = Array.from({ length: this.lastPoseLandmarks.length }, () => ({ x: 0, y: 0, visibility: 0 }));
+      for (const index of armHandIndices) {
+        const previous = this.lastPoseLandmarks[index];
+        if (previous) armsOnly[index] = { ...previous };
+      }
+      return armsOnly;
+    }
+
+    if (now - this.lastPoseSeenAt > this.HAND_SKELETON_GRACE_MS) {
+      this.lastPoseLandmarks = null;
+      this.lastPoseSeenAt = 0;
+    }
+    return landmarks || null;
+  }
+
+  resetSkeletonGrace() {
+    this.lastPoseLandmarks = null;
+    this.lastPoseSeenAt = 0;
+  }
+
+  // 繪製微弱的輔助半透明骨架；手部/手腕短暫掉偵測時沿用最近手臂位置
   drawSkeleton(landmarks, width, height) {
-    if (!landmarks) return;
-    const points = landmarks.map(({ x, y, visibility = 1 }) => ({
+    const visibleLandmarks = this.resolveSkeletonLandmarks(landmarks);
+    if (!visibleLandmarks) return false;
+    const points = visibleLandmarks.map(({ x, y, visibility = 1 }) => ({
       x: (1 - x) * width,
       y: y * height,
       visibility,
@@ -206,6 +260,7 @@ export class GameRenderer {
       ctx.stroke();
     }
     ctx.restore();
+    return true;
   }
 
   // 果園插圖做為透明樹冠邊框；載入失敗時退回原本 Canvas 樹冠

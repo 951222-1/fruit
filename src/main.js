@@ -285,10 +285,8 @@ function renderLoop() {
       height
     );
 
-    // 繪製微光骨架輔助
-    if (poseResult?.landmarks?.[0]) {
-      renderer.drawSkeleton(poseResult.landmarks[0], width, height);
-    }
+    // 畫面短暫漏掉手腕/手部時，Canvas 會保留最近的手臂線條 0.6 秒
+    renderer.drawSkeleton(poseResult?.landmarks?.[0] || null, width, height);
 
     // 遊戲物理與介面更新
     game.update({ handResult, poseResult }, renderer, width, height);
@@ -335,6 +333,7 @@ function renderLoop() {
 
 async function start() {
   if (running) return;
+  renderer.resetSkeletonGrace();
   sound.playClick();
   startButton.disabled = true;
   emptyStartBtn.disabled = true;
@@ -381,6 +380,7 @@ function stop() {
   sound.playClick();
   running = false;
   camera.stop();
+  renderer.resetSkeletonGrace();
   stage.classList.remove('person-cutout');
   renderer.clear(stage.clientWidth, stage.clientHeight);
   emptyState.hidden = false;
