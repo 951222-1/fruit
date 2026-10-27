@@ -48,6 +48,7 @@ export class SlingshotGame {
     this.shoulderYSmooth = null;
     this.shoulderSeenAt = 0;
     this.handsSeenAt = 0;
+    this.HAND_LOSS_GRACE_MS = 2000;
     this.lastHandsData = null;
     this.togetherStreak = 0;
     this.pullStreak = 0;
@@ -504,16 +505,31 @@ export class SlingshotGame {
     };
   }
 
+  resolveHandsDataWithGrace(handsData, now) {
+    if (handsData) {
+      this.handsSeenAt = now;
+      this.lastHandsData = handsData;
+      return handsData;
+    }
+    if (
+      this.slingshotState === 'PULLING'
+      && this.lastHandsData
+      && now - this.handsSeenAt < this.HAND_LOSS_GRACE_MS
+    ) {
+      return { ...this.lastHandsData, isStale: true };
+    }
+    this.lastHandsData = null;
+    return null;
+  }
+
   update({ handResult, poseResult }, renderer, width, height) {
     this.updateAnchor(width, height);
     let handsData = this.getHandsData(handResult, poseResult, width, height);
     const now = performance.now();
+    handsData = this.resolveHandsDataWithGrace(handsData, now);
 
     // 偵測穩定性處理：短暫遺失寬限 + 指數平滑
     if (handsData) {
-      this.handsSeenAt = now;
-      this.lastHandsData = handsData;
-
       const a = 0.45; // 平滑係數（越小越穩、越大越靈敏）
       this.smoothMidX = this.smoothMidX == null ? handsData.midX : this.smoothMidX + a * (handsData.midX - this.smoothMidX);
       this.smoothMidY = this.smoothMidY == null ? handsData.midY : this.smoothMidY + a * (handsData.midY - this.smoothMidY);
@@ -525,9 +541,6 @@ export class SlingshotGame {
         this.shoulderYSmooth = this.shoulderYSmooth == null ? sy : this.shoulderYSmooth + 0.3 * (sy - this.shoulderYSmooth);
         this.shoulderSeenAt = now;
       }
-    } else if (this.slingshotState === 'PULLING' && this.lastHandsData && now - this.handsSeenAt < 600) {
-      // 拉弓中手部短暫抓不到（<0.6 秒）：沿用最後位置，蓄力不會被誤重置
-      handsData = this.lastHandsData;
     }
 
     // 倒數進行時不計 60 秒；只有 PLAYING 才執行挑戰計時
@@ -815,7 +828,7 @@ export class SlingshotGame {
       }
 
       // ===== 步驟 3：維持姿勢 3 秒 → 自動發射 =====
-      if (this.phase === 'PLAYING' || this.phase === 'CALIBRATION' || this.phase === 'READY') {
+      if (!handsData.isStale && (this.phase === 'PLAYING' || this.phase === 'CALIBRATION' || this.phase === 'READY')) {
         this.chargeMs += dt;
         const secLeft = Math.ceil((this.CHARGE_REQUIRED_MS - this.chargeMs) / 1000);
         if (secLeft < this.lastChargeSecond && secLeft > 0) {

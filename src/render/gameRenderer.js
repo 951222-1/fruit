@@ -187,7 +187,7 @@ export class GameRenderer {
     this.ctx.clearRect(0, 0, width, height);
   }
 
-  resolveSkeletonLandmarks(landmarks, now = performance.now()) {
+  resolveSkeletonLandmarks(landmarks, now = performance.now(), graceMs = this.HAND_SKELETON_GRACE_MS) {
     const armHandIndices = [11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22];
     const bothWristsVisible = Boolean(
       landmarks?.[15]
@@ -203,7 +203,7 @@ export class GameRenderer {
     }
 
     const cacheValid = this.lastPoseLandmarks
-      && now - this.lastPoseSeenAt <= this.HAND_SKELETON_GRACE_MS;
+      && now - this.lastPoseSeenAt <= graceMs;
     if (landmarks && cacheValid) {
       const merged = landmarks.map((point) => (point ? { ...point } : null));
       for (const index of armHandIndices) {
@@ -225,7 +225,7 @@ export class GameRenderer {
       return armsOnly;
     }
 
-    if (now - this.lastPoseSeenAt > this.HAND_SKELETON_GRACE_MS) {
+    if (now - this.lastPoseSeenAt > graceMs) {
       this.lastPoseLandmarks = null;
       this.lastPoseSeenAt = 0;
     }
@@ -238,8 +238,8 @@ export class GameRenderer {
   }
 
   // 繪製微弱的輔助半透明骨架；手部/手腕短暫掉偵測時沿用最近手臂位置
-  drawSkeleton(landmarks, width, height) {
-    const visibleLandmarks = this.resolveSkeletonLandmarks(landmarks);
+  drawSkeleton(landmarks, width, height, graceMs = this.HAND_SKELETON_GRACE_MS) {
+    const visibleLandmarks = this.resolveSkeletonLandmarks(landmarks, performance.now(), graceMs);
     if (!visibleLandmarks) return false;
     const points = visibleLandmarks.map(({ x, y, visibility = 1 }) => ({
       x: (1 - x) * width,
@@ -535,30 +535,30 @@ export class GameRenderer {
     ctx.restore();
   }
 
-  // 採收模式打錯水果時的大字提示
+  // 採收模式非當季水果的輕量提示，不遮擋主要操作區
   drawHarvestFeedback(text, width, height) {
     const ctx = this.ctx;
     ctx.save();
-    ctx.font = 'bold 30px system-ui, sans-serif';
+    ctx.font = '600 21px system-ui, sans-serif';
     const textW = ctx.measureText(text).width;
-    const bw = Math.min(width - 32, textW + 48);
-    const bh = 64;
+    const bw = Math.min(width - 32, textW + 36);
+    const bh = 44;
     const bx = (width - bw) / 2;
-    const by = height * 0.52 - bh / 2;
+    const by = Math.max(16, height * 0.36 - bh / 2);
 
     ctx.beginPath();
-    ctx.roundRect ? ctx.roundRect(bx, by, bw, bh, 18) : ctx.rect(bx, by, bw, bh);
-    ctx.fillStyle = 'rgba(69, 10, 10, 0.9)';
+    ctx.roundRect ? ctx.roundRect(bx, by, bw, bh, 12) : ctx.rect(bx, by, bw, bh);
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.68)';
     ctx.fill();
-    ctx.lineWidth = 3;
-    ctx.strokeStyle = '#f87171';
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = 'rgba(203, 213, 225, 0.58)';
     ctx.stroke();
 
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillStyle = '#fff7ed';
-    ctx.font = 'bold 30px system-ui, sans-serif';
-    ctx.fillText(text, width / 2, by + bh / 2 + 1, bw - 24);
+    ctx.fillStyle = '#fef3c7';
+    ctx.font = '600 21px system-ui, sans-serif';
+    ctx.fillText(text, width / 2, by + bh / 2 + 1, bw - 18);
     ctx.restore();
   }
 

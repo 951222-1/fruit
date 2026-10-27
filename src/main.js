@@ -285,8 +285,11 @@ function renderLoop() {
       height
     );
 
-    // 畫面短暫漏掉手腕/手部時，Canvas 會保留最近的手臂線條 0.6 秒
-    renderer.drawSkeleton(poseResult?.landmarks?.[0] || null, width, height);
+    // 拉弓時用 2 秒手部寬限；其他狀態保持較短的骨架防閃爍
+    const handGraceMs = game.slingshotState === 'PULLING'
+      ? game.HAND_LOSS_GRACE_MS
+      : renderer.HAND_SKELETON_GRACE_MS;
+    renderer.drawSkeleton(poseResult?.landmarks?.[0] || null, width, height, handGraceMs);
 
     // 遊戲物理與介面更新
     game.update({ handResult, poseResult }, renderer, width, height);
