@@ -15,6 +15,11 @@ export class DualRenderer {
       { key: 'background', url: `${ART_BASE_URL}orchard-background-muted.jpg` },
       { key: 'frame', url: `${ART_BASE_URL}orchard-frame-muted.png` },
       { key: 'evil-bird', url: `${ART_BASE_URL}evil-bird.png` },
+      { key: 'hands-fist', url: `${ART_BASE_URL}hands-fist.png` },
+      { key: 'slingshot-fork', url: `${ART_BASE_URL}slingshot-fork.png` },
+      { key: 'slingshot-idle', url: `${ART_BASE_URL}slingshot-idle.png` },
+      { key: 'slingshot-pouch', url: `${ART_BASE_URL}slingshot-pouch.png` },
+      { key: 'slingshot-pulled', url: `${ART_BASE_URL}slingshot-pulled.png` },
       { key: 'fruit-red-apple', url: `${ART_BASE_URL}fruit-red-apple.png` },
       { key: 'fruit-orange', url: `${ART_BASE_URL}fruit-orange.png` },
       { key: 'fruit-peach', url: `${ART_BASE_URL}fruit-peach.png` },
@@ -279,41 +284,72 @@ export class DualRenderer {
     const mainColor = isP1 ? '#3b82f6' : '#f97316';
     const lightColor = isP1 ? '#93c5fd' : '#fed7aa';
 
+    const forkImg = this.assets['slingshot-fork'];
+    const idleImg = this.assets['slingshot-idle'];
+    const pouchImg = this.assets['slingshot-pouch'];
+    const handsFistImg = this.assets['hands-fist'];
+
     ctx.save();
 
-    // 1. 彈弓木架基座 (Y 字型)
-    const baseW = 18;
-    const armSpread = 36;
-    const armTop = player.anchor.y - 28;
+    // 彈弓木架尺寸 (高對比高品質貼圖)
+    const forkW = Math.min(130, this.stageWidth * 0.13);
+    const forkH = forkW * (1288 / 895);
+    const anchorX = player.anchor.x;
+    const anchorY = player.anchor.y;
 
-    ctx.strokeStyle = '#78350f';
-    ctx.lineWidth = 9;
-    ctx.lineCap = 'round';
+    // 左右叉梢端點
+    const armTopY = anchorY - forkH * 0.36;
+    const prongLX = anchorX - forkW * 0.36;
+    const prongRX = anchorX + forkW * 0.36;
 
-    // 彈弓柄
-    ctx.beginPath();
-    ctx.moveTo(player.anchor.x, player.anchor.y + 40);
-    ctx.lineTo(player.anchor.x, player.anchor.y);
-    ctx.lineTo(player.anchor.x - armSpread, armTop);
-    ctx.moveTo(player.anchor.x, player.anchor.y);
-    ctx.lineTo(player.anchor.x + armSpread, armTop);
-    ctx.stroke();
-
-    // 2. 彈力橡皮筋
     const pouchX = player.pouch.x;
     const pouchY = player.pouch.y;
 
-    ctx.strokeStyle = theme === 'orange' ? '#ea580c' : '#2563eb';
-    ctx.lineWidth = 5;
-    ctx.beginPath();
-    ctx.moveTo(player.anchor.x - armSpread, armTop);
-    ctx.lineTo(pouchX, pouchY);
-    ctx.moveTo(player.anchor.x + armSpread, armTop);
-    ctx.lineTo(pouchX, pouchY);
-    ctx.stroke();
-
-    // 3. 拉弓中的發光瞄準虛線與準星
+    // 1. 繪製彈弓本體與橡皮筋
     if (player.state === 'PULLING') {
+      // 拉弓中：繪製真實彈弓木架
+      if (forkImg && forkImg.complete && forkImg.naturalWidth > 0) {
+        ctx.save();
+        ctx.shadowColor = isP1 ? 'rgba(59, 130, 246, 0.45)' : 'rgba(249, 115, 22, 0.45)';
+        ctx.shadowBlur = 12;
+        ctx.drawImage(forkImg, anchorX - forkW * 0.5, anchorY - forkH * 0.52, forkW, forkH);
+        ctx.restore();
+      } else {
+        ctx.strokeStyle = '#78350f';
+        ctx.lineWidth = 10;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(anchorX, anchorY + 40);
+        ctx.lineTo(anchorX, anchorY);
+        ctx.lineTo(prongLX, armTopY);
+        ctx.moveTo(anchorX, anchorY);
+        ctx.lineTo(prongRX, armTopY);
+        ctx.stroke();
+      }
+
+      // 繪製拉伸的橡皮筋 (外層深色 + 內層亮色光澤)
+      ctx.save();
+      ctx.lineCap = 'round';
+      ctx.strokeStyle = theme === 'orange' ? '#c2410c' : '#1d4ed8';
+      ctx.lineWidth = 6;
+      ctx.beginPath();
+      ctx.moveTo(prongLX, armTopY);
+      ctx.lineTo(pouchX, pouchY);
+      ctx.moveTo(prongRX, armTopY);
+      ctx.lineTo(pouchX, pouchY);
+      ctx.stroke();
+
+      ctx.strokeStyle = theme === 'orange' ? '#fb923c' : '#60a5fa';
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.moveTo(prongLX, armTopY);
+      ctx.lineTo(pouchX, pouchY);
+      ctx.moveTo(prongRX, armTopY);
+      ctx.lineTo(pouchX, pouchY);
+      ctx.stroke();
+      ctx.restore();
+
+      // 瞄準虛線與準星
       ctx.strokeStyle = lightColor;
       ctx.lineWidth = 3;
       ctx.setLineDash([8, 6]);
@@ -323,48 +359,106 @@ export class DualRenderer {
       ctx.stroke();
       ctx.setLineDash([]);
 
-      // 準星圓圈與十字線
       const tx = player.target.x;
       const ty = player.target.y;
       ctx.strokeStyle = mainColor;
       ctx.lineWidth = 3;
       ctx.beginPath();
-      ctx.arc(tx, ty, 20, 0, Math.PI * 2);
-      ctx.moveTo(tx - 26, ty);
-      ctx.lineTo(tx + 26, ty);
-      ctx.moveTo(tx, ty - 26);
-      ctx.lineTo(tx, ty + 26);
+      ctx.arc(tx, ty, 22, 0, Math.PI * 2);
+      ctx.moveTo(tx - 28, ty);
+      ctx.lineTo(tx + 28, ty);
+      ctx.moveTo(tx, ty - 28);
+      ctx.lineTo(tx + 28, ty);
       ctx.stroke();
 
-      // 3 秒蓄力進度外圈 (橘/綠)
+      // 3 秒蓄力進度外圈
       const chargeRatio = Math.min(1, player.chargeMs / 3000);
       const chargeAngle = chargeRatio * Math.PI * 2;
       ctx.strokeStyle = chargeRatio >= 0.95 ? '#4ade80' : '#facc15';
       ctx.lineWidth = 6;
       ctx.beginPath();
-      ctx.arc(tx, ty, 28, -Math.PI / 2, -Math.PI / 2 + chargeAngle);
+      ctx.arc(tx, ty, 30, -Math.PI / 2, -Math.PI / 2 + chargeAngle);
       ctx.stroke();
 
-      // 蓄力倒數秒數提示
       const secLeft = Math.ceil((3000 - player.chargeMs) / 1000);
       ctx.font = 'bold 18px system-ui, sans-serif';
       ctx.textAlign = 'center';
       ctx.fillStyle = '#ffffff';
       ctx.shadowColor = 'rgba(0, 0, 0, 0.8)';
       ctx.shadowBlur = 6;
-      ctx.fillText(`${secLeft}s`, tx, ty - 34);
-    }
+      ctx.fillText(secLeft + 's', tx, ty - 36);
 
-    // 4. 皮兜處的卡通手
-    if (player.state === 'PULLING') {
-      drawFist(ctx, pouchX, pouchY, 32, theme);
+      // 皮兜 (slingshot-pouch.png)
+      if (pouchImg && pouchImg.complete && pouchImg.naturalWidth > 0) {
+        const pW = 46;
+        const pH = pW * (pouchImg.naturalHeight / pouchImg.naturalWidth);
+        ctx.save();
+        ctx.drawImage(pouchImg, pouchX - pW * 0.5, pouchY - pH * 0.5, pW, pH);
+        ctx.restore();
+      }
+
+      // 手部 (hands-fist.png) 緊握皮兜拉弓
+      if (handsFistImg && handsFistImg.complete && handsFistImg.naturalWidth > 0) {
+        const hW = Math.min(130, this.stageWidth * 0.13);
+        const hH = hW * (handsFistImg.naturalHeight / handsFistImg.naturalWidth);
+        ctx.save();
+        ctx.shadowColor = isP1 ? 'rgba(59, 130, 246, 0.75)' : 'rgba(249, 115, 22, 0.75)';
+        ctx.shadowBlur = 14;
+        ctx.drawImage(handsFistImg, pouchX - hW * 0.5, pouchY - hH * 0.5, hW, hH);
+        ctx.restore();
+      } else {
+        drawFist(ctx, pouchX, pouchY, 34, theme);
+      }
     } else {
-      drawOpenPalm(ctx, pouchX, pouchY, 30, theme);
+      // 靜止 / 準備狀態：繪製整套彈弓 (slingshot-idle.png 或 fork + 自然皮筋)
+      if (idleImg && idleImg.complete && idleImg.naturalWidth > 0) {
+        ctx.save();
+        ctx.shadowColor = isP1 ? 'rgba(59, 130, 246, 0.35)' : 'rgba(249, 115, 22, 0.35)';
+        ctx.shadowBlur = 10;
+        ctx.drawImage(idleImg, anchorX - forkW * 0.5, anchorY - forkH * 0.52, forkW, forkH);
+        ctx.restore();
+      } else if (forkImg && forkImg.complete && forkImg.naturalWidth > 0) {
+        ctx.drawImage(forkImg, anchorX - forkW * 0.5, anchorY - forkH * 0.52, forkW, forkH);
+        ctx.strokeStyle = theme === 'orange' ? '#ea580c' : '#2563eb';
+        ctx.lineWidth = 5;
+        ctx.beginPath();
+        ctx.moveTo(prongLX, armTopY);
+        ctx.quadraticCurveTo(anchorX, armTopY + 25, prongRX, armTopY);
+        ctx.stroke();
+      } else {
+        ctx.strokeStyle = '#78350f';
+        ctx.lineWidth = 9;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(anchorX, anchorY + 40);
+        ctx.lineTo(anchorX, anchorY);
+        ctx.lineTo(prongLX, armTopY);
+        ctx.moveTo(anchorX, anchorY);
+        ctx.lineTo(prongRX, armTopY);
+        ctx.stroke();
+      }
+
+      // 準備狀態 (READY) 或 IDLE 時的手部提示
+      if (player.state === 'READY') {
+        if (handsFistImg && handsFistImg.complete && handsFistImg.naturalWidth > 0) {
+          const hW = Math.min(118, this.stageWidth * 0.12);
+          const hH = hW * (handsFistImg.naturalHeight / handsFistImg.naturalWidth);
+          ctx.save();
+          const bounce = Math.sin(timestamp * 0.008) * 5;
+          ctx.shadowColor = isP1 ? 'rgba(59, 130, 246, 0.85)' : 'rgba(249, 115, 22, 0.85)';
+          ctx.shadowBlur = 16;
+          ctx.drawImage(handsFistImg, pouchX - hW * 0.5, pouchY - hH * 0.5 + bounce, hW, hH);
+          ctx.restore();
+        } else {
+          drawFist(ctx, pouchX, pouchY, 32, theme);
+        }
+      } else {
+        drawOpenPalm(ctx, pouchX, pouchY + 10, 28, theme);
+      }
     }
 
     ctx.restore();
   }
-
   drawProjectiles(projectiles) {
     const ctx = this.ctx;
     for (const p of projectiles) {
