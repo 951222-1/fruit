@@ -34,24 +34,67 @@ app.innerHTML = `
           </div>
 
           <div class="empty-state" id="emptyState">
-            <div class="camera-icon">🏹</div>
-            <h2>選擇遊戲模式</h2>
-            <p>先選一種玩法，再啟動 Webcam 開始遊戲。</p>
-            <div class="mode-picker" role="group" aria-label="選擇遊戲模式">
-              <button class="mode-card selected" type="button" data-mode="CLASSIC" aria-pressed="true">
-                <strong>🎯 經典彈弓</strong>
-                <span>想射哪種就射哪種；每顆水果命中固定 +15 分。</span>
-              </button>
-              <button class="mode-card" type="button" data-mode="HARVEST" aria-pressed="false">
-                <strong>🍎 水果採收</strong>
-                <span>每局指定一種當季水果；其他種類也能打落並得 5 分。</span>
-              </button>
-              <button class="mode-card" type="button" data-mode="HARVEST_HARD" aria-pressed="false">
-                <strong>🐝 水果採集困難版</strong>
-                <span>1–2個原水果位換蜂巢；射中扣5分，15秒未擊落自動掉落；水果重生30%機率變蜂巢（最多2個）。</span>
-              </button>
+            <!-- 第一層：選擇遊玩人數 (單人 / 雙人) -->
+            <div class="category-view" id="categoryPickerView">
+              <div class="camera-icon">🎮</div>
+              <h2>請選擇遊玩人數</h2>
+              <p>選擇個人挑戰或是雙人同框合作，享受不同的體感樂趣！</p>
+              <div class="category-cards">
+                <button class="category-card" type="button" id="btnChooseSingle">
+                  <div class="cat-icon">👤</div>
+                  <div class="cat-info">
+                    <strong>單人遊玩</strong>
+                    <span>個人專注打靶、當季水果採收、蜂巢閃避挑戰（3 種玩法）</span>
+                  </div>
+                  <span class="cat-badge">進入單人選單 ➔</span>
+                </button>
+                <button class="category-card" type="button" id="btnChooseMulti">
+                  <div class="cat-icon">👥</div>
+                  <div class="cat-info">
+                    <strong>雙人遊玩</strong>
+                    <span>兩位玩家同框合力討伐果園巨怪！雙人合體技爆發</span>
+                  </div>
+                  <span class="cat-badge cat-badge-gold">進入雙人選單 ➔</span>
+                </button>
+              </div>
             </div>
-            <button class="primary" id="emptyStartBtn" style="margin-top: 16px; padding: 12px 24px; font-size: 16px;">啟動 Webcam 🎥</button>
+
+            <!-- 第二層：選擇具體子玩法 -->
+            <div class="mode-view" id="modePickerView" hidden>
+              <button class="back-category-btn" type="button" id="backToCategoryBtn">⬅ 返回選擇人數</button>
+              <h2 id="modeCategoryTitle">👤 單人遊玩模式</h2>
+              <p id="modeCategoryDesc">先選一種玩法，再啟動 Webcam 開始遊戲。</p>
+              
+              <!-- 單人模式群組 -->
+              <div class="mode-picker" id="singleModeGroup" role="group" aria-label="單人模式選擇">
+                <button class="mode-card selected" type="button" data-mode="CLASSIC" aria-pressed="true">
+                  <strong>🎯 經典彈弓</strong>
+                  <span>想射哪種就射哪種；每顆水果命中固定 +15 分。</span>
+                </button>
+                <button class="mode-card" type="button" data-mode="HARVEST" aria-pressed="false">
+                  <strong>🍎 水果採收</strong>
+                  <span>每局指定一種當季水果；其他種類也能打落並得 5 分。</span>
+                </button>
+                <button class="mode-card" type="button" data-mode="HARVEST_HARD" aria-pressed="false">
+                  <strong>🐝 水果採集困難版</strong>
+                  <span>1–2個原水果位換蜂巢；射中扣5分，15秒未擊落自動掉落；水果重生30%機率變蜂巢（最多2個）。</span>
+                </button>
+              </div>
+
+              <!-- 雙人模式群組 -->
+              <div class="mode-picker" id="multiModeGroup" role="group" aria-label="雙人模式選擇" hidden>
+                <button class="mode-card" type="button" data-mode="DUAL_BOSS" aria-pressed="false">
+                  <strong>👾 雙人打怪合作戰</strong>
+                  <span>P1 左側、P2 右側，合力擊退果園大巨怪！兩人相繼命中觸發合體大爆擊！</span>
+                </button>
+                <button class="mode-card mode-card-upcoming" type="button" disabled>
+                  <strong>🚀 敬請期待更多玩法</strong>
+                  <span>雙人搶果對抗賽、接力挑戰等多種新玩法持續擴充中！</span>
+                </button>
+              </div>
+
+              <button class="primary" id="emptyStartBtn" style="margin-top: 16px; padding: 12px 24px; font-size: 16px;">啟動 Webcam 🎥</button>
+            </div>
           </div>
 
           <div class="harvest-rules" id="harvestRules" hidden>
@@ -127,6 +170,15 @@ const canvas = document.querySelector('#overlay');
 const stage = document.querySelector('#stage');
 const playArea = document.querySelector('#playArea');
 const emptyState = document.querySelector('#emptyState');
+const categoryPickerView = document.querySelector('#categoryPickerView');
+const modePickerView = document.querySelector('#modePickerView');
+const btnChooseSingle = document.querySelector('#btnChooseSingle');
+const btnChooseMulti = document.querySelector('#btnChooseMulti');
+const backToCategoryBtn = document.querySelector('#backToCategoryBtn');
+const modeCategoryTitle = document.querySelector('#modeCategoryTitle');
+const modeCategoryDesc = document.querySelector('#modeCategoryDesc');
+const singleModeGroup = document.querySelector('#singleModeGroup');
+const multiModeGroup = document.querySelector('#multiModeGroup');
 const harvestRules = document.querySelector('#harvestRules');
 const hardHarvestRule = document.querySelector('#hardHarvestRule');
 const rulesGesture = document.querySelector('.rules-gesture');
@@ -141,7 +193,7 @@ const rulesFruitIcon = document.querySelector('#rulesFruitIcon');
 const rulesFruitName = document.querySelector('#rulesFruitName');
 const modeTipTitle = document.querySelector('#modeTipTitle');
 const modeTipText = document.querySelector('#modeTipText');
-const modeCards = [...document.querySelectorAll('.mode-card')];
+const modeCards = [...document.querySelectorAll('.mode-card:not([disabled])')];
 const startButton = document.querySelector('#startButton');
 const emptyStartBtn = document.querySelector('#emptyStartBtn');
 const stopButton = document.querySelector('#stopButton');
@@ -205,35 +257,95 @@ async function toggleFullscreen() {
   }
 }
 
+let currentCategory = 'single';
+
+function showCategoryPicker() {
+  categoryPickerView.hidden = false;
+  modePickerView.hidden = true;
+  sound.playClick();
+}
+
+function showModePicker(category) {
+  currentCategory = category;
+  categoryPickerView.hidden = true;
+  modePickerView.hidden = false;
+  sound.playClick();
+
+  if (category === 'single') {
+    modeCategoryTitle.textContent = '👤 單人遊玩模式';
+    modeCategoryDesc.textContent = '先選一種單人玩法，再啟動 Webcam 開始遊戲。';
+    singleModeGroup.hidden = false;
+    multiModeGroup.hidden = true;
+    if (selectedMode === 'DUAL_BOSS') {
+      selectMode('CLASSIC');
+    } else {
+      selectMode(selectedMode);
+    }
+  } else {
+    modeCategoryTitle.textContent = '👥 雙人遊玩模式';
+    modeCategoryDesc.textContent = '兩位玩家同框同樂！後續將持續增加更多雙人玩法。';
+    singleModeGroup.hidden = true;
+    multiModeGroup.hidden = false;
+    selectMode('DUAL_BOSS');
+  }
+}
+
+btnChooseSingle.addEventListener('click', () => showModePicker('single'));
+btnChooseMulti.addEventListener('click', () => showModePicker('multi'));
+backToCategoryBtn.addEventListener('click', () => showCategoryPicker());
+
 function selectMode(mode) {
   selectedMode = mode;
   const isHardHarvest = mode === 'HARVEST_HARD';
   const isHarvest = mode === 'HARVEST' || isHardHarvest;
+  const isDualBoss = mode === 'DUAL_BOSS';
+
   playArea.classList.toggle('harvest-mode', isHarvest);
   playArea.classList.toggle('hard-harvest-mode', isHardHarvest);
+  playArea.classList.toggle('dual-boss-mode', isDualBoss);
+
   rulesGesture.textContent = isHardHarvest
     ? '手勢同教學：雙手併攏下拉，續力 3 秒。'
-    : '雙手併攏抬高過肩，像拉彈弓一樣往下拉；續力 3 秒射出第一發。';
+    : (isDualBoss
+      ? '兩人各自站在左右半邊，雙手併攏下拉，續力 3 秒射擊。'
+      : '雙手併攏抬高過肩，像拉彈弓一樣往下拉；續力 3 秒射出第一發。');
   rulesStartHint.textContent = isHardHarvest
     ? '第一發射出才開始 60 秒挑戰。'
-    : '確認後，第一發射出才開始 60 秒挑戰。';
+    : (isDualBoss
+      ? '準備好後，續力射出彈丸開始討伐！'
+      : '確認後，第一發射出才開始 60 秒挑戰。');
+
   modeCards.forEach((card) => {
     const selected = card.dataset.mode === mode;
     card.classList.toggle('selected', selected);
     card.setAttribute('aria-pressed', String(selected));
   });
 
-  modeTipTitle.textContent = isHardHarvest ? '🐝 水果採集困難版' : (isHarvest ? '🍎 當季水果採收' : '🎯 經典彈弓');
-  modeTipText.textContent = isHardHarvest
-    ? '蜂巢命中扣5分，15秒未擊落會掉落；水果重生30%機率變蜂巢（最多2個）。'
-    : (isHarvest
-      ? '牌子上的水果照原分數；其他水果也能打落，固定 +5 分。'
-      : '想射哪種就射哪種；每顆水果命中固定 +15 分。');
-  const startLabel = isHardHarvest
-    ? '啟動 Webcam · 水果採集困難版 🐝'
-    : (isHarvest ? '啟動 Webcam · 水果採收 🍎' : '啟動 Webcam · 經典彈弓 🎯');
-  startButton.textContent = startLabel;
-  emptyStartBtn.textContent = startLabel;
+  if (isDualBoss) {
+    modeTipTitle.textContent = '👾 雙人打怪合作戰';
+    modeTipText.textContent = 'P1 站在左側、P2 站在右側；兩人雙手拉弓續力 3 秒射擊，1.5 秒內相繼命中觸發合體大爆擊！';
+    const startLabel = '啟動 Webcam · 雙人打怪合作戰 👥';
+    startButton.textContent = startLabel;
+    emptyStartBtn.textContent = startLabel;
+  } else if (isHardHarvest) {
+    modeTipTitle.textContent = '🐝 水果採集困難版';
+    modeTipText.textContent = '蜂巢命中扣5分，15秒未擊落會掉落；水果重生30%機率變蜂巢（最多2個）。';
+    const startLabel = '啟動 Webcam · 水果採集困難版 🐝';
+    startButton.textContent = startLabel;
+    emptyStartBtn.textContent = startLabel;
+  } else if (isHarvest) {
+    modeTipTitle.textContent = '🍎 當季水果採收';
+    modeTipText.textContent = '牌子上的水果照原分數；其他水果也能打落，固定 +5 分。';
+    const startLabel = '啟動 Webcam · 水果採收 🍎';
+    startButton.textContent = startLabel;
+    emptyStartBtn.textContent = startLabel;
+  } else {
+    modeTipTitle.textContent = '🎯 經典彈弓';
+    modeTipText.textContent = '想射哪種就射哪種；每顆水果命中固定 +15 分。';
+    const startLabel = '啟動 Webcam · 經典彈弓 🎯';
+    startButton.textContent = startLabel;
+    emptyStartBtn.textContent = startLabel;
+  }
 }
 
 function syncHarvestUi() {
@@ -384,6 +496,14 @@ function renderLoop() {
 
 async function start() {
   if (running) return;
+  if (selectedMode === 'DUAL_BOSS') {
+    sound.playClick();
+    const dualUrl = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+      ? 'http://localhost:5176/'
+      : './dual/';
+    window.location.href = dualUrl;
+    return;
+  }
   renderer.resetSkeletonGrace();
   sound.playClick();
   startButton.disabled = true;

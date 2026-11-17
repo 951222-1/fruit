@@ -366,12 +366,154 @@ button:disabled {
   grid-template-columns: minmax(0, 1fr) 176px;
 }
 
+/* ===== 遊玩人數與類型分類選單 ===== */
+.category-view,
+.mode-view {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+}
+
+.category-view[hidden],
+.mode-view[hidden] {
+  display: none !important;
+}
+
+.category-cards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  width: min(820px, 100%);
+  margin-top: 18px;
+}
+
+.category-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 24px 20px;
+  background: rgba(15, 31, 52, 0.94);
+  border: 2.5px solid #3b82f6;
+  border-radius: 18px;
+  cursor: pointer;
+  transition: all 0.22s ease-in-out;
+  color: #e2e8f0;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+.category-card:hover {
+  transform: translateY(-4px);
+  background: rgba(30, 58, 138, 0.88);
+  border-color: #60a5fa;
+  box-shadow: 0 12px 30px rgba(59, 130, 246, 0.35);
+}
+
+.category-card:active {
+  transform: translateY(0);
+}
+
+.category-card .cat-icon {
+  font-size: 46px;
+  margin-bottom: 10px;
+  filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.3));
+}
+
+.category-card .cat-info strong {
+  display: block;
+  font-size: 21px;
+  color: #fef3c7;
+  margin-bottom: 6px;
+}
+
+.category-card .cat-info span {
+  display: block;
+  font-size: 13.5px;
+  color: #cbd5e1;
+  line-height: 1.5;
+  min-height: 40px;
+  margin-bottom: 14px;
+}
+
+.category-card .cat-badge {
+  display: inline-block;
+  font-size: 13px;
+  font-weight: 700;
+  color: #38bdf8;
+  background: rgba(56, 189, 248, 0.15);
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  padding: 6px 18px;
+  border-radius: 999px;
+  transition: all 0.2s ease;
+}
+
+.category-card:hover .cat-badge {
+  background: #38bdf8;
+  color: #082f49;
+}
+
+.category-card .cat-badge-gold {
+  color: #facc15;
+  background: rgba(250, 204, 21, 0.15);
+  border-color: rgba(250, 204, 21, 0.3);
+}
+
+.category-card:hover .cat-badge-gold {
+  background: #facc15;
+  color: #451a03;
+}
+
+.back-category-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1.5px solid rgba(255, 255, 255, 0.22);
+  color: #e2e8f0;
+  padding: 6px 16px;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  margin-bottom: 8px;
+  transition: all 0.2s ease;
+}
+
+.back-category-btn:hover {
+  background: rgba(255, 255, 255, 0.18);
+  border-color: #facc15;
+  color: #facc15;
+  transform: translateX(-3px);
+}
+
+.mode-card-upcoming {
+  opacity: 0.65;
+  cursor: not-allowed !important;
+  border-style: dashed !important;
+  border-color: #64748b !important;
+  background: rgba(15, 23, 42, 0.6) !important;
+}
+
+.mode-card-upcoming strong {
+  color: #94a3b8 !important;
+}
+
 .mode-picker {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
   width: min(900px, 100%);
   margin-top: 16px;
+}
+
+.mode-picker[hidden] {
+  display: none !important;
+}
+
+#multiModeGroup {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  width: min(760px, 100%);
 }
 
 .mode-card {
@@ -674,6 +816,30 @@ button:disabled {
 }
 
 @media (max-width: 768px) {
+  .category-cards {
+    grid-template-columns: 1fr;
+    gap: 10px;
+    margin-top: 10px;
+  }
+
+  .category-card {
+    padding: 14px 12px;
+  }
+
+  .category-card .cat-icon {
+    font-size: 36px;
+    margin-bottom: 4px;
+  }
+
+  .category-card .cat-info strong {
+    font-size: 18px;
+  }
+
+  .category-card .cat-info span {
+    min-height: auto;
+    margin-bottom: 8px;
+  }
+
   .mode-picker {
     grid-template-columns: 1fr;
     gap: 7px;
