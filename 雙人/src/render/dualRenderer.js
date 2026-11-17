@@ -453,7 +453,16 @@ export class DualRenderer {
           drawFist(ctx, pouchX, pouchY, 32, theme);
         }
       } else {
-        drawOpenPalm(ctx, pouchX, pouchY + 10, 28, theme);
+        // IDLE 狀態：在彈弓上方顯示浮動手勢引導
+        ctx.save();
+        const floatY = Math.sin(timestamp * 0.005) * 4;
+        ctx.font = 'bold 14px system-ui, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillStyle = isP1 ? '#93c5fd' : '#fed7aa';
+        ctx.shadowColor = 'rgba(0, 0, 0, 0.8)';
+        ctx.shadowBlur = 4;
+        ctx.fillText('✋ 舉手過肩吸附', anchorX, anchorY - forkH * 0.58 + floatY);
+        ctx.restore();
       }
     }
 

@@ -102,11 +102,11 @@ export class DualBossGame {
     this.boss.hitRadius = Math.min(140, this.stageWidth * 0.16);
 
     // 彈弓基準點：P1 左側 26%，P2 右側 74%
-    this.p1.anchor = { x: this.stageWidth * 0.26, y: this.stageHeight * 0.88 };
+    this.p1.anchor = { x: this.stageWidth * 0.26, y: this.stageHeight * 0.78 };
     this.p1.pouch = { ...this.p1.anchor };
     this.p1.target = { x: this.boss.x - 40, y: this.boss.y };
 
-    this.p2.anchor = { x: this.stageWidth * 0.74, y: this.stageHeight * 0.88 };
+    this.p2.anchor = { x: this.stageWidth * 0.74, y: this.stageHeight * 0.78 };
     this.p2.pouch = { ...this.p2.anchor };
     this.p2.target = { x: this.boss.x + 40, y: this.boss.y };
   }
